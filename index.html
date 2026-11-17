@@ -24,14 +24,25 @@
     @keyframes slideFromLeft { 0% { transform: translateX(-48px); opacity: 0.25; } 100% { transform: translateX(0); opacity: 1; } }
     .anim-slide-next { animation: slideFromRight 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
     .anim-slide-prev { animation: slideFromLeft 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-     @media print {
-      @page { size: A4 portrait; margin: 10mm; }
-      body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* PDF・印刷時の視認性大幅アップ専用スタイル */
+    @media print {
+      @page { size: A4 portrait; margin: 8mm; }
+      body { background: #ffffff !important; color: #000000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .no-print { display: none !important; }
       .print-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
-      .print-cal-cell { min-height: 92px !important; }
+      .print-grid-header { font-size: 14px !important; padding: 6px 0 !important; border-color: #334155 !important; }
+      .print-cal-cell { min-height: 118px !important; padding: 4px !important; border: 1px solid #94a3b8 !important; }
+      .print-day-num { font-size: 15px !important; font-weight: 900 !important; }
+      .print-holiday { font-size: 11px !important; max-width: none !important; font-weight: 700 !important; }
+      .print-leave-row { height: 20px !important; margin-bottom: 2px !important; border-color: #64748b !important; }
+      .print-leave-text { font-size: 12.5px !important; font-weight: 800 !important; padding: 0 4px !important; }
+      .print-oncall-box { padding: 6px 4px !important; border-width: 1.5px !important; }
+      .print-oncall-text { font-size: 15px !important; font-weight: 900 !important; }
+      .print-op-box { padding: 4px 6px !important; border-width: 1.5px !important; }
+      .print-op-label { font-size: 11px !important; font-weight: 800 !important; }
+      .print-op-name { font-size: 13.5px !important; font-weight: 900 !important; }
     }
-
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -105,15 +116,15 @@
     const DEFAULT_RULES = { excludePmLeave: true, avoidBeforeFullLeave: true, avoidSameWeekMultiple: true, excludeAmLeave: false, ruleOrder: DEFAULT_RULE_ORDER };
 
     const LEAVE_TYPES = [
-      { id: 'full', label: '全日有休', short: '全休', band: 'full', bg: 'bg-rose-300/80', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
-      { id: 'am', label: '午前休', short: '午前休', band: 'left-half', bg: 'bg-amber-300/80', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
-      { id: 'pm', label: '午後休', short: '午後休', band: 'right-half', bg: 'bg-orange-300/80', badge: 'bg-orange-100 text-orange-800 border-orange-300' },
-      { id: 'am_1h', label: '午前1時間休', short: '前1h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
-      { id: 'am_2h', label: '午前2時間休', short: '前2h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
-      { id: 'am_3h', label: '午前3時間休', short: '前3h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
-      { id: 'pm_1h', label: '午後1時間休', short: '後1h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
-      { id: 'pm_2h', label: '午後2時間休', short: '後2h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
-      { id: 'pm_3h', label: '午後3時間休', short: '後3h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'full', label: '全日有休', short: '全休', band: 'full', bg: 'bg-rose-300/85', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
+      { id: 'am', label: '午前休', short: '午前休', band: 'left-half', bg: 'bg-amber-300/85', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
+      { id: 'pm', label: '午後休', short: '午後休', band: 'right-half', bg: 'bg-orange-300/85', badge: 'bg-orange-100 text-orange-800 border-orange-300' },
+      { id: 'am_1h', label: '午前1時間休', short: '前1h', band: 'left-short', bg: 'bg-sky-300/85', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'am_2h', label: '午前2時間休', short: '前2h', band: 'left-short', bg: 'bg-sky-300/85', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'am_3h', label: '午前3時間休', short: '前3h', band: 'left-short', bg: 'bg-sky-300/85', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'pm_1h', label: '午後1時間休', short: '後1h', band: 'right-short', bg: 'bg-teal-300/85', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'pm_2h', label: '午後2時間休', short: '後2h', band: 'right-short', bg: 'bg-teal-300/85', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'pm_3h', label: '午後3時間休', short: '後3h', band: 'right-short', bg: 'bg-teal-300/85', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
       { id: 'ng', label: 'オンコール不可(定時)', short: '定時', band: 'none', bg: '', badge: 'bg-slate-100 text-slate-700 border-slate-300' },
     ];
 
@@ -133,6 +144,11 @@
       '2028-05-05': 'こどもの日', '2028-07-17': '海の日', '2028-08-11': '山の日', '2028-09-18': '敬老の日',
       '2028-09-22': '秋分の日', '2028-10-09': 'スポーツの日', '2028-11-03': '文化の日', '2028-11-23': '勤労感謝の日'
     };
+
+    function getTodayDateString() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
 
     function normalizeMembers(list) {
       if (!Array.isArray(list)) return DEFAULT_MEMBERS;
@@ -165,7 +181,7 @@
 
     function App() {
       const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'oncall' | 'outpatient' | 'settings'
-      const [settingsSubTab, setSettingsSubTab] = useState('auto'); // 'auto' | 'outpatient' | 'member' | 'cloud'
+      const [settingsSubTab, setSettingsSubTab] = useState('auto'); // 'auto' | 'outpatient' | 'member' | 'backup' | 'cloud'
       const [currentDate, setCurrentDate] = useState(new Date(2026, 10, 1));
       const [slideAnim, setSlideAnim] = useState({ dir: '', seq: 0 });
       const [toastMsg, setToastMsg] = useState(null);
@@ -192,10 +208,18 @@
         const s = localStorage.getItem('oncall_rules_v3'); return s ? normalizeRules(JSON.parse(s)) : DEFAULT_RULES;
       });
 
+      // バックアップ一覧（日付キーの配列・マップ）
+      const [backups, setBackups] = useState(() => {
+        const s = localStorage.getItem('oncall_backups_v1');
+        return s ? JSON.parse(s) : {};
+      });
+      const [selectedBackupDate, setSelectedBackupDate] = useState('');
+
       const [syncStatus, setSyncStatus] = useState('init');
       const [syncErrorDetail, setSyncErrorDetail] = useState('');
       const [customConfigText, setCustomConfigText] = useState(() => localStorage.getItem('oncall_firebase_config_raw') || '');
       const docRefHolder = useRef(null);
+      const dailyBackupDoneRef = useRef(false);
 
       const [selectedDateKey, setSelectedDateKey] = useState(null);
       const [formMemberId, setFormMemberId] = useState('m1');
@@ -212,13 +236,53 @@
       useEffect(() => { localStorage.setItem('oncall_outpatient_slots_v3', JSON.stringify(outpatientSlots)); }, [outpatientSlots]);
       useEffect(() => { localStorage.setItem('oncall_target_days_v3', JSON.stringify(targetDays)); }, [targetDays]);
       useEffect(() => { localStorage.setItem('oncall_rules_v3', JSON.stringify(rules)); }, [rules]);
+      useEffect(() => { localStorage.setItem('oncall_backups_v1', JSON.stringify(backups)); }, [backups]);
 
-      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2200); };
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2400); };
 
+      // バックアップ保存処理（1日1回自動 or 手動実行、最大30日分保持）
+      const createBackupSnapshot = async (dateKey, payloadData, isSilent = false) => {
+        const snap = {
+          dateKey,
+          savedAt: new Date().toLocaleString('ja-JP'),
+          timestamp: Date.now(),
+          data: payloadData
+        };
+
+        setBackups(prev => {
+          const next = { ...prev, [dateKey]: snap };
+          const keys = Object.keys(next).sort().reverse();
+          if (keys.length > 30) {
+            keys.slice(30).forEach(oldKey => delete next[oldKey]);
+          }
+          return next;
+        });
+
+        if (docRefHolder.current) {
+          try {
+            await docRefHolder.current.collection('backups').doc(dateKey).set(snap);
+          } catch (e) {
+            console.warn('Cloud backup write skipped:', e);
+          }
+        }
+        if (!isSilent) showToast(`バックアップ(${dateKey})を保存しました`);
+      };
+
+      // Firebase初期化＆クラウド同期＋1日1回自動バックアップチェック
       useEffect(() => {
         let unsubscribeSnapshot = null;
+        let unsubscribeBackups = null;
         let unsubscribeAuth = null;
+
         async function initCloudSync() {
+          const todayKey = getTodayDateString();
+
+          // まずローカルで1日1回バックアップが未作成なら作成
+          const localBks = JSON.parse(localStorage.getItem('oncall_backups_v1') || '{}');
+          if (!localBks[todayKey] && Object.keys(leaves).length + Object.keys(oncalls).length + Object.keys(outpatients).length > 0) {
+            createBackupSnapshot(todayKey, { members, leaves, oncalls, outpatients, outpatientSlots, targetDays, rules }, true);
+          }
+
           try {
             const savedRaw = localStorage.getItem('oncall_firebase_config_raw');
             let fbConfig = savedRaw ? parseFirebaseConfigInput(savedRaw) : CUSTOM_FIREBASE_CONFIG;
@@ -233,18 +297,48 @@
               if (!user) return;
               const sharedDocRef = db.collection('calendars').doc('shared_main');
               docRefHolder.current = sharedDocRef;
+
+              // バックアップコレクションのリアルタイム購読
+              unsubscribeBackups = sharedDocRef.collection('backups').onSnapshot((bkSnap) => {
+                const cloudBks = {};
+                bkSnap.forEach(doc => { cloudBks[doc.id] = doc.data(); });
+                if (Object.keys(cloudBks).length > 0) {
+                  setBackups(prev => ({ ...prev, ...cloudBks }));
+                }
+              }, () => {});
+
               unsubscribeSnapshot = sharedDocRef.onSnapshot(
                 (snapshot) => {
                   setSyncStatus('connected'); setSyncErrorDetail('');
                   if (snapshot.exists) {
                     const data = snapshot.data();
-                    if (data.members) setMembers(normalizeMembers(data.members));
+                    const normMems = data.members ? normalizeMembers(data.members) : members;
+                    const normRules = data.rules ? normalizeRules(data.rules) : rules;
+                    if (data.members) setMembers(normMems);
                     if (data.leaves) setLeaves(data.leaves);
                     if (data.oncalls) setOncalls(data.oncalls);
                     if (data.outpatients) setOutpatients(data.outpatients);
                     if (data.outpatientSlots) setOutpatientSlots(data.outpatientSlots);
                     if (data.targetDays) setTargetDays(data.targetDays);
-                    if (data.rules) setRules(prev => normalizeRules({ ...prev, ...data.rules }));
+                    if (data.rules) setRules(normRules);
+
+                    // 1日1回の自動クラウドバックアップ（その日のバックアップが未作成の場合のみ実行）
+                    if (!dailyBackupDoneRef.current) {
+                      dailyBackupDoneRef.current = true;
+                      sharedDocRef.collection('backups').doc(todayKey).get().then((bkDoc) => {
+                        if (!bkDoc.exists) {
+                          createBackupSnapshot(todayKey, {
+                            members: normMems,
+                            leaves: data.leaves || {},
+                            oncalls: data.oncalls || {},
+                            outpatients: data.outpatients || {},
+                            outpatientSlots: data.outpatientSlots || DEFAULT_OUTPATIENT_SLOTS,
+                            targetDays: data.targetDays || [1, 2, 3, 4, 5],
+                            rules: normRules
+                          }, true);
+                        }
+                      }).catch(() => {});
+                    }
                   } else {
                     sharedDocRef.set({ members, leaves, oncalls, outpatients, outpatientSlots, targetDays, rules, updatedAt: Date.now() }, { merge: true }).catch(() => {});
                   }
@@ -255,7 +349,11 @@
           } catch (err) { setSyncStatus('error'); setSyncErrorDetail(err.message || '初期化エラー'); }
         }
         initCloudSync();
-        return () => { if (unsubscribeSnapshot) unsubscribeSnapshot(); if (unsubscribeAuth) unsubscribeAuth(); };
+        return () => {
+          if (unsubscribeSnapshot) unsubscribeSnapshot();
+          if (unsubscribeBackups) unsubscribeBackups();
+          if (unsubscribeAuth) unsubscribeAuth();
+        };
       }, []);
 
       const pushToCloud = (patch) => {
@@ -269,6 +367,90 @@
       const updateOutpatientSlots = (fn) => setOutpatientSlots(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ outpatientSlots: n }); return n; });
       const updateTargetDays = (fn) => setTargetDays(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ targetDays: n }); return n; });
       const updateRules = (fn) => setRules(p => { const n = normalizeRules(typeof fn === 'function' ? fn(p) : fn); pushToCloud({ rules: n }); return n; });
+
+      // 指定した日付のバックアップからデータを復元
+      const restoreFromBackup = (dateKey) => {
+        const bk = backups[dateKey];
+        if (!bk || !bk.data) { showToast('バックアップデータが見つかりません'); return; }
+        if (!window.confirm(`${dateKey}（${bk.savedAt} 保存）のバックアップ状態に復元しますか？\n※現在のデータは上書きされます。`)) return;
+
+        const d = bk.data;
+        const nextMembers = normalizeMembers(d.members || DEFAULT_MEMBERS);
+        const nextLeaves = d.leaves || {};
+        const nextOncalls = d.oncalls || {};
+        const nextOutpatients = d.outpatients || {};
+        const nextSlots = d.outpatientSlots || DEFAULT_OUTPATIENT_SLOTS;
+        const nextTargetDays = d.targetDays || [1, 2, 3, 4, 5];
+        const nextRules = normalizeRules(d.rules || DEFAULT_RULES);
+
+        setMembers(nextMembers);
+        setLeaves(nextLeaves);
+        setOncalls(nextOncalls);
+        setOutpatients(nextOutpatients);
+        setOutpatientSlots(nextSlots);
+        setTargetDays(nextTargetDays);
+        setRules(nextRules);
+
+        pushToCloud({
+          members: nextMembers,
+          leaves: nextLeaves,
+          oncalls: nextOncalls,
+          outpatients: nextOutpatients,
+          outpatientSlots: nextSlots,
+          targetDays: nextTargetDays,
+          rules: nextRules
+        });
+
+        showToast(`${dateKey} の状態に復元しました`);
+      };
+
+      // バックアップJSONファイルのダウンロード保存
+      const downloadBackupFile = () => {
+        const todayKey = getTodayDateString();
+        const payload = {
+          exportedAt: new Date().toLocaleString('ja-JP'),
+          data: { members, leaves, oncalls, outpatients, outpatientSlots, targetDays, rules }
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup_pto_oncall_${todayKey}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('バックアップファイルを保存しました');
+      };
+
+      // バックアップJSONファイルからの読み込み復元
+      const handleImportBackupFile = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            const d = parsed.data || parsed;
+            if (!d.members && !d.leaves) throw new Error('Invalid format');
+            const nextMembers = normalizeMembers(d.members || DEFAULT_MEMBERS);
+            const nextLeaves = d.leaves || {};
+            const nextOncalls = d.oncalls || {};
+            const nextOutpatients = d.outpatients || {};
+            const nextSlots = d.outpatientSlots || DEFAULT_OUTPATIENT_SLOTS;
+            const nextTargetDays = d.targetDays || [1, 2, 3, 4, 5];
+            const nextRules = normalizeRules(d.rules || DEFAULT_RULES);
+
+            setMembers(nextMembers); setLeaves(nextLeaves); setOncalls(nextOncalls);
+            setOutpatients(nextOutpatients); setOutpatientSlots(nextSlots);
+            setTargetDays(nextTargetDays); setRules(nextRules);
+            pushToCloud({ members: nextMembers, leaves: nextLeaves, oncalls: nextOncalls, outpatients: nextOutpatients, outpatientSlots: nextSlots, targetDays: nextTargetDays, rules: nextRules });
+            showToast('ファイルからデータを復元しました');
+          } catch (err) {
+            showToast('ファイルの形式が正しくありません');
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      };
 
       const moveRuleOrder = (idx, dir) => {
         updateRules(prev => {
@@ -429,7 +611,6 @@
 
         const monthDays = calendarCells.filter(Boolean);
 
-        // 固定済み(locked)の集計（同日午前・午後が同じ人なら週カウント・曜日カウントは1日分として集計）
         monthDays.forEach(c => {
           const cur = nextOp[c.key] || {};
           const nextDayObj = {};
@@ -465,27 +646,19 @@
 
           if (!needAm && !needPm) return;
 
-          // 片方が手動固定されている場合は、もう片方も同じ人（休暇と干渉しない場合）を最優先で割り当てる
           const lockedMid = curDayOp.am?.locked ? curDayOp.am.memberId : (curDayOp.pm?.locked ? curDayOp.pm.memberId : null);
           if (lockedMid) {
             const lType = dayLeaves[lockedMid];
             const canDoAm = !needAm || (lType !== 'full' && !(lType && lType.startsWith('am')));
             const canDoPm = !needPm || (lType !== 'full' && !(lType && lType.startsWith('pm')));
             if (canDoAm && canDoPm) {
-              if (needAm) {
-                curDayOp.am = { memberId: lockedMid, locked: false };
-                totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1;
-              }
-              if (needPm) {
-                curDayOp.pm = { memberId: lockedMid, locked: false };
-                totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1;
-              }
+              if (needAm) { curDayOp.am = { memberId: lockedMid, locked: false }; totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1; }
+              if (needPm) { curDayOp.pm = { memberId: lockedMid, locked: false }; totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1; }
               nextOp[cell.key] = curDayOp;
               return;
             }
           }
 
-          // 当日の必要枠（午前のみ / 午後のみ / 午前・午後両方）をすべて満たせる候補者を抽出
           const candidates = members.filter(m => {
             if (!m.outpatientActive) return false;
             if (!(m.outpatientDays || []).includes(cell.dow)) return false;
@@ -506,10 +679,8 @@
             const ratio = Math.max(1, availSlots) / Math.max(1, activeSlotsCount);
 
             let score = (totalCounts[m.id] / ratio) * 110;
-            // 同じ週での複数日担当を極力なくす
             const sameWeek = weeklyCounts[m.id]?.[cell.weekIndex] || 0;
             if (sameWeek > 0) score += sameWeek * 1200;
-            // 曜日の偏りを防ぐ
             const sameDow = dowCounts[m.id]?.[cell.dow] || 0;
             score += sameDow * 360;
 
@@ -520,14 +691,8 @@
           scored.sort((a, b) => a.score - b.score);
           const chosen = scored[0].member;
 
-          if (needAm) {
-            curDayOp.am = { memberId: chosen.id, locked: false };
-            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
-          }
-          if (needPm) {
-            curDayOp.pm = { memberId: chosen.id, locked: false };
-            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
-          }
+          if (needAm) { curDayOp.am = { memberId: chosen.id, locked: false }; totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1; }
+          if (needPm) { curDayOp.pm = { memberId: chosen.id, locked: false }; totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1; }
           if (dowCounts[chosen.id]) dowCounts[chosen.id][cell.dow] = (dowCounts[chosen.id][cell.dow] || 0) + 1;
           if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
           weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
@@ -540,6 +705,14 @@
         showToast(`${month + 1}月の外来担当を自動割付しました`);
       };
 
+      // PDF出力（印刷時には集計表を出さず、カレンダーを大きくくっきり出力）
+      const handleExportPDF = () => {
+        const tabLabel = activeTab === 'leave' ? '有給休暇カレンダー' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表';
+        const prevTitle = document.title;
+        document.title = `${year}年${month + 1}月_${tabLabel}`;
+        window.print();
+        setTimeout(() => { document.title = prevTitle; }, 1000);
+      };
 
       const saveCustomFirebaseConfig = () => {
         const parsed = parseFirebaseConfigInput(customConfigText);
@@ -555,25 +728,22 @@
         showToast('設定をリセットしました');
         setTimeout(() => window.location.reload(), 600);
       };
-            // PDF出力（タイトルを「年月_種別」に自動変更して印刷/PDFダイアログを起動）
-      const handleExportPDF = () => {
-        const tabLabel = activeTab === 'leave' ? '有給休暇カレンダー' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表';
-        const prevTitle = document.title;
-        document.title = `${year}年${month + 1}月_${tabLabel}`;
-        window.print();
-        setTimeout(() => { document.title = prevTitle; }, 1000);
-      };
 
-
+      // 月間集計（外来は午前・午後通しで1日分としてカウントしつつコマ数も把握可能に）
       const monthlyStats = useMemo(() => {
         const stats = {};
-        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0, op: 0 }; });
+        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0, opDays: 0, opSlots: 0 }; });
         calendarCells.filter(Boolean).forEach(c => {
           const oc = oncalls[c.key]?.memberId;
           if (oc && stats[oc]) { stats[oc].oncall += 1; if (c.dow === 5) stats[oc].fri += 1; }
           const opDay = outpatients[c.key] || {};
-          if (opDay.am?.memberId && stats[opDay.am.memberId]) stats[opDay.am.memberId].op += 1;
-          if (opDay.pm?.memberId && stats[opDay.pm.memberId]) stats[opDay.pm.memberId].op += 1;
+          const amMid = opDay.am?.memberId;
+          const pmMid = opDay.pm?.memberId;
+          if (amMid && stats[amMid]) stats[amMid].opSlots += 1;
+          if (pmMid && stats[pmMid]) stats[pmMid].opSlots += 1;
+          const dayMids = new Set([amMid, pmMid].filter(Boolean));
+          dayMids.forEach(mid => { if (stats[mid]) stats[mid].opDays += 1; });
+
           Object.entries(leaves[c.key] || {}).forEach(([mid, type]) => {
             if (stats[mid] && type !== 'ng') stats[mid].leave += 1;
           });
@@ -583,8 +753,9 @@
 
       const slideClass = slideAnim.dir === 'next' ? 'anim-slide-next' : slideAnim.dir === 'prev' ? 'anim-slide-prev' : '';
       const orderedRuleKeys = rules.ruleOrder || DEFAULT_RULE_ORDER;
+      const sortedBackupKeys = useMemo(() => Object.keys(backups).sort().reverse(), [backups]);
 
-            return (
+      return (
         <div
           className="print-container max-w-md mx-auto min-h-screen flex flex-col bg-slate-50 pb-20 select-none overflow-x-hidden"
           onTouchStart={activeTab !== 'settings' ? handleTouchStart : undefined}
@@ -596,14 +767,12 @@
             </div>
           )}
 
-          {/* PDF出力時のみ最上部に表示されるタイトルヘッダー */}
-          <div className="hidden print:flex items-end justify-between border-b-2 border-slate-800 pb-2 mb-3">
-            <div>
-              <div className="text-xl font-extrabold text-slate-900">
-                {year}年 {month + 1}月 {activeTab === 'leave' ? '有給休暇予定表' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表'}
-              </div>
+          {/* PDF出力時のみ最上部に表示される大見出しヘッダー */}
+          <div className="hidden print:flex items-end justify-between border-b-2 border-slate-900 pb-2.5 mb-3">
+            <div className="text-2xl font-black text-slate-900 tracking-tight">
+              {year}年 {month + 1}月 {activeTab === 'leave' ? '有給休暇予定表' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表'}
             </div>
-            <div className="text-xs font-bold text-slate-500">
+            <div className="text-xs font-bold text-slate-600">
               出力日: {new Date().toLocaleDateString('ja-JP')}
             </div>
           </div>
@@ -650,23 +819,24 @@
                   </div>
                 </>
               ) : (
-                <div className="text-base font-extrabold tracking-tight text-slate-800">⚙ 設定</div>
+                <div className="text-base font-extrabold tracking-tight text-slate-800">⚙ 設定・バックアップ</div>
               )}
             </div>
           </header>
 
-
           {activeTab !== 'settings' ? (
             <main key={`cal-${slideAnim.seq}`} className={`p-1.5 flex-1 ${slideClass}`}>
-              <div className="grid grid-cols-7 bg-slate-200 gap-px border border-slate-200 rounded-t-lg overflow-hidden">
+              {/* カレンダー曜日ヘッダー */}
+              <div className="grid grid-cols-7 bg-slate-300 gap-px border border-slate-300 rounded-t-lg overflow-hidden">
                 {WEEKDAYS.map((w, i) => (
-                  <div key={w} className={`bg-slate-100 text-center py-1 text-[11px] font-bold ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-blue-600' : 'text-slate-700'}`}>{w}</div>
+                  <div key={w} className={`print-grid-header bg-slate-100 text-center py-1 text-[11px] font-extrabold ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-blue-600' : 'text-slate-700'}`}>{w}</div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-7 bg-slate-200 gap-px border-x border-b border-slate-200 rounded-b-lg overflow-hidden">
+              {/* カレンダー本体 */}
+              <div className="grid grid-cols-7 bg-slate-300 gap-px border-x border-b border-slate-300 rounded-b-lg overflow-hidden">
                 {calendarCells.map((cell, idx) => {
-                  if (!cell) return <div key={`empty-${idx}`} className="bg-slate-50/70 min-h-[82px]" />;
+                  if (!cell) return <div key={`empty-${idx}`} className="print-cal-cell bg-slate-50/80 min-h-[82px]" />;
                   const dayLeaves = leaves[cell.key] || {};
                   const oncallInfo = oncalls[cell.key];
                   const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
@@ -676,10 +846,10 @@
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
 
                   return (
-                    <div key={cell.key} onClick={() => handleDateTap(cell)} className="bg-white min-h-[82px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden">
+                    <div key={cell.key} onClick={() => handleDateTap(cell)} className="print-cal-cell bg-white min-h-[82px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden">
                       <div className="flex items-baseline justify-between px-0.5 leading-none mb-0.5">
-                        <span className={`text-[11px] font-bold ${isSunOrHol ? 'text-rose-600' : cell.dow === 6 ? 'text-blue-600' : 'text-slate-800'}`}>{cell.day}</span>
-                        {cell.holiday && <span className="text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">{cell.holiday}</span>}
+                        <span className={`print-day-num text-[11px] font-bold ${isSunOrHol ? 'text-rose-600' : cell.dow === 6 ? 'text-blue-600' : 'text-slate-800'}`}>{cell.day}</span>
+                        {cell.holiday && <span className="print-holiday text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">{cell.holiday}</span>}
                       </div>
 
                       {activeTab === 'leave' && (
@@ -690,9 +860,9 @@
                             if (!mem || !typeObj) return null;
                             const bandMap = { full: 'inset-0', 'left-half': 'inset-y-0 left-0 w-1/2', 'right-half': 'inset-y-0 right-0 w-1/2', 'left-short': 'inset-y-0 left-0 w-[35%]', 'right-short': 'inset-y-0 right-0 w-[35%]' };
                             return (
-                              <div key={mid} className="relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-200/60">
+                              <div key={mid} className="print-leave-row relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-300/80">
                                 {typeObj.band !== 'none' && <div className={`absolute ${bandMap[typeObj.band] || ''} ${typeObj.bg} pointer-events-none`} />}
-                                <span className="relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
+                                <span className="print-leave-text relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
                                   {lType === 'ng' ? `${mem.name}定時` : mem.name}
                                 </span>
                               </div>
@@ -702,13 +872,13 @@
                       )}
 
                       {activeTab === 'oncall' && (
-                        <div className="flex-1 flex flex-col justify-center items-center">
+                        <div className="flex-1 flex flex-col justify-center items-center px-0.5">
                           {oncallMember ? (
-                            <div className={`w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-900 border-indigo-200'}`}>
-                              <div className="text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">{oncallMember.name}</div>
+                            <div className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-950 border-indigo-300'}`}>
+                              <div className="print-oncall-text text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">{oncallMember.name}</div>
                             </div>
                           ) : (
-                            targetDays.includes(cell.dow) && !cell.holiday && <span className="text-[8.5px] text-slate-300">未割当</span>
+                            targetDays.includes(cell.dow) && !cell.holiday && <span className="no-print text-[8.5px] text-slate-300">未割当</span>
                           )}
                         </div>
                       )}
@@ -718,15 +888,15 @@
                           {MON_FRI.includes(cell.dow) && !cell.holiday && (
                             <>
                               {(outpatientSlots.am || []).includes(cell.dow) && (
-                                <div className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${opAmMember ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-900 border-emerald-200') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
-                                  <span className="text-[7.5px] font-bold opacity-75">前</span>
-                                  <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">{opAmMember ? opAmMember.name : '未'}</span>
+                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${opAmMember ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-950 border-emerald-300') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                  <span className="print-op-label text-[7.5px] font-bold opacity-80">前</span>
+                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">{opAmMember ? opAmMember.name : '未'}</span>
                                 </div>
                               )}
                               {(outpatientSlots.pm || []).includes(cell.dow) && (
-                                <div className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${opPmMember ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-900 border-teal-200') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
-                                  <span className="text-[7.5px] font-bold opacity-75">後</span>
-                                  <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">{opPmMember ? opPmMember.name : '未'}</span>
+                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${opPmMember ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-950 border-teal-300') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                  <span className="print-op-label text-[7.5px] font-bold opacity-80">後</span>
+                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">{opPmMember ? opPmMember.name : '未'}</span>
                                 </div>
                               )}
                             </>
@@ -737,28 +907,52 @@
                   );
                 })}
               </div>
-                            {/* PDF出力時のみカレンダー下部に表示される月間集計表 */}
-              <div className="hidden print:block mt-4 border border-slate-300 rounded-lg p-3 bg-white">
-                <div className="text-xs font-extrabold text-slate-800 mb-2">
-                  📊 {year}年{month + 1}月 メンバー別集計（オンコール・外来・有給）
+
+              {/* 通常使用時のみカレンダー直下に常時表示される月間集計パネル（印刷時は非表示） */}
+              <div className="no-print mt-2.5 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-extrabold text-slate-700">
+                    📊 {year}年{month + 1}月 メンバー別状況（リアルタイム集計）
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    OC / 外来 / 有給
+                  </span>
                 </div>
-                <div className="grid grid-cols-4 gap-2 text-[10px]">
-                  {members.map(m => (
-                    <div key={m.id} className="border border-slate-200 rounded px-2 py-1 flex items-center justify-between bg-slate-50">
-                      <span className="font-extrabold text-slate-800">{m.name}</span>
-                      <span className="text-slate-600 font-bold">
-                        OC:{monthlyStats[m.id]?.oncall || 0}(金{monthlyStats[m.id]?.fri || 0}) / 外:{monthlyStats[m.id]?.op || 0} / 休:{monthlyStats[m.id]?.leave || 0}
-                      </span>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {members.map(m => {
+                    const st = monthlyStats[m.id] || { oncall: 0, fri: 0, opDays: 0, leave: 0 };
+                    return (
+                      <div key={m.id} className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1 text-[10.5px]">
+                        <span className="font-extrabold text-slate-800 truncate mr-1">{m.name}</span>
+                        <div className="flex items-center gap-1 shrink-0 font-bold">
+                          <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                            OC {st.oncall}<span className="text-[9px] opacity-75">(金{st.fri})</span>
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                            外 {st.opDays}日
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200/60">
+                            休 {st.leave}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </main>
           ) : (
-            <main className="p-3 flex-1 space-y-4">
-              <div className="grid grid-cols-4 gap-1 bg-slate-200/80 p-1 rounded-xl">
-                {[['auto', 'OC割付'], ['outpatient', '外来割付'], ['member', 'メンバー'], ['cloud', '☁ 同期']].map(([k, label]) => (
-                  <button key={k} onClick={() => setSettingsSubTab(k)} className={`py-2 text-[11px] font-bold rounded-lg transition ${settingsSubTab === k ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}>{label}</button>
+            <main className="no-print p-3 flex-1 space-y-4">
+              {/* 設定サブタブ（5項目） */}
+              <div className="grid grid-cols-5 gap-1 bg-slate-200/80 p-1 rounded-xl">
+                {[
+                  ['auto', 'OC割付'],
+                  ['outpatient', '外来割付'],
+                  ['member', 'メンバー'],
+                  ['backup', '⏱ 復元'],
+                  ['cloud', '☁ 同期']
+                ].map(([k, label]) => (
+                  <button key={k} onClick={() => setSettingsSubTab(k)} className={`py-2 text-[10.5px] font-bold rounded-lg transition ${settingsSubTab === k ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}>{label}</button>
                 ))}
               </div>
 
@@ -882,7 +1076,7 @@
                               <input type="checkbox" checked={m.outpatientActive !== false} onChange={e => updateMembers(p => p.map(x => x.id === m.id ? { ...x, outpatientActive: e.target.checked } : x))} className="w-4 h-4 accent-emerald-600" />
                               <span>{m.name}</span>
                             </label>
-                            <span className="text-[10px] text-slate-500">今月外来: {monthlyStats[m.id]?.op || 0}コマ</span>
+                            <span className="text-[10px] text-slate-500">今月外来: {monthlyStats[m.id]?.opDays || 0}日 ({monthlyStats[m.id]?.opSlots || 0}コマ)</span>
                           </div>
                           <div className="grid grid-cols-5 gap-1">
                             {MON_FRI.map(dow => {
@@ -909,7 +1103,6 @@
                       <li>全休は終日、午前休・時間休は午前、午後休・時間休は午後から自動除外</li>
                       <li>特定の曜日に偏らないよう均等化</li>
                       <li>同日の午前・午後は同一メンバーが通しで担当し、同じ週での複数日担当を極力回避</li>
-
                     </ul>
                   </div>
 
@@ -932,6 +1125,75 @@
                     ))}
                   </div>
                   <button onClick={() => updateMembers(p => [...p, { id: 'm' + Date.now(), name: `メンバー${p.length + 1}`, active: true, workDays: [1,2,3,4,5], outpatientActive: true, outpatientDays: [1,2,3,4,5] }])} className="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300">＋ メンバー追加</button>
+                </div>
+              )}
+
+              {/* ⏱ 自動＆手動バックアップ・日付指定復元サブタブ */}
+              {settingsSubTab === 'backup' && (
+                <div className="space-y-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm text-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-extrabold text-slate-800 text-sm">⏱ 日次バックアップ＆復元</div>
+                      <div className="text-[10.5px] text-slate-500 mt-0.5">1日1回自動でスナップショットが保存されます（最大30日分）</div>
+                    </div>
+                    <button
+                      onClick={() => createBackupSnapshot(getTodayDateString(), { members, leaves, oncalls, outpatients, outpatientSlots, targetDays, rules }, false)}
+                      className="px-2.5 py-1.5 bg-indigo-600 text-white font-bold rounded-lg shadow-sm active:scale-95 shrink-0"
+                    >
+                      ＋ 今すぐ保存
+                    </button>
+                  </div>
+
+                  {/* 日付リストから選択して復元 */}
+                  <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div className="font-bold text-slate-700">📅 保存済みバックアップ一覧（日付を指定して復元）</div>
+                    {sortedBackupKeys.length === 0 ? (
+                      <div className="text-slate-400 py-3 text-center">まだバックアップがありません</div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        {sortedBackupKeys.map(dateKey => {
+                          const bk = backups[dateKey];
+                          const leaveDaysCount = Object.keys(bk?.data?.leaves || {}).length;
+                          const ocDaysCount = Object.keys(bk?.data?.oncalls || {}).length;
+                          const opDaysCount = Object.keys(bk?.data?.outpatients || {}).length;
+                          return (
+                            <div key={dateKey} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
+                              <div>
+                                <div className="font-extrabold text-slate-800 text-xs">{dateKey}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  保存時刻: {bk.savedAt || '-'} （休:{leaveDaysCount}日 / OC:{ocDaysCount}日 / 外:{opDaysCount}日）
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => restoreFromBackup(dateKey)}
+                                className="px-3 py-1.5 bg-amber-500 text-white font-extrabold rounded-lg text-[11px] shadow-sm active:scale-95"
+                              >
+                                この日に戻す
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ファイルとしてのバックアップ書き出し・読み込み */}
+                  <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div className="font-bold text-slate-700">💾 バックアップファイルの保存・読み込み</div>
+                    <p className="text-[10.5px] text-slate-500">端末内にJSONファイルとしてダウンロードしたり、ファイルを選択して復元できます。</p>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        onClick={downloadBackupFile}
+                        className="py-2 px-2 bg-slate-800 text-white font-bold rounded-xl text-center shadow-sm active:scale-95"
+                      >
+                        ⬇ ファイル保存
+                      </button>
+                      <label className="py-2 px-2 bg-white text-slate-700 border border-slate-300 font-bold rounded-xl text-center cursor-pointer shadow-sm active:bg-slate-100">
+                        ⬆ ファイル復元
+                        <input type="file" accept=".json" onChange={handleImportBackupFile} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -965,7 +1227,7 @@
 
           {/* 日付タップモーダル */}
           {selectedDateKey && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedDateKey(null)}>
+            <div className="no-print fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedDateKey(null)}>
               <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                   <div className="flex items-center gap-2">
