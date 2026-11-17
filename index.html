@@ -90,7 +90,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // 埋め込み済みFirebase設定
+    // 埋め込み済みFirebase設定（メンバー全員が設定不要で自動同期されます）
     const CUSTOM_FIREBASE_CONFIG = {
       apiKey: "AIzaSyBBTIFpAPLK61wD6AyGWXghsbWhFAo_N2M",
       authDomain: "pto-oncall-calendar.firebaseapp.com",
@@ -114,117 +114,44 @@
       { id: 'm8', name: '中村', active: true, workDays: [1, 2, 3, 4, 5] },
     ];
 
-    // 配慮・除外ルール定義（連直を削除し、同一週内回避を含む4項目）
-    const RULE_CATALOG = {
+    // 配慮・除外ルールの定義（連直回避を削除し、優先順位リストに対応）
+    const RULE_DEFINITIONS = {
       excludePmLeave: {
         id: 'excludePmLeave',
-        label: '午後休・午後時間休のメンバーを除外',
-        desc: '午後に休暇がある日を優先的に避けます'
-      },
-      avoidSameWeekMultiple: {
-        id: 'avoidSameWeekMultiple',
-        label: '同じ週内での担当を避ける',
-        desc: '同一週（日曜〜土曜）に2回以上入らないよう分散します'
+        label: '午後休・午後時間休のメンバーを除外する',
+        desc: '午後不在のためオンコール対象から外します'
       },
       avoidBeforeFullLeave: {
         id: 'avoidBeforeFullLeave',
         label: '全日有休の前日はオンコールを避ける',
-        desc: '翌日が全休のメンバーを前日当番から避けます'
+        desc: '翌日全休のメンバーへの割付を回避します'
+      },
+      avoidSameWeekMultiple: {
+        id: 'avoidSameWeekMultiple',
+        label: '同じ週内で複数回オンコールは可能な限り避ける',
+        desc: '同一週（日曜〜土曜）での複数回担当を抑えます'
       },
       excludeAmLeave: {
         id: 'excludeAmLeave',
-        label: '午前休・午前時間休のメンバーも除外',
-        desc: '午前に休暇がある日も避けます'
+        label: '午前休・午前時間休のメンバーも除外する',
+        desc: '午前不在のメンバーもオンコール対象から外します'
       }
     };
 
-    const DEFAULT_RULE_ITEMS = [
-      { id: 'excludePmLeave', enabled: true },
-      { id: 'avoidSameWeekMultiple', enabled: true },
-      { id: 'avoidBeforeFullLeave', enabled: true },
-      { id: 'excludeAmLeave', enabled: false },
+    const DEFAULT_RULE_ORDER = [
+      'excludePmLeave',
+      'avoidBeforeFullLeave',
+      'avoidSameWeekMultiple',
+      'excludeAmLeave'
     ];
 
-    // 優先順位に応じたペナルティ重み（1位ほど絶対回避に近い強力なペナルティ）
-    const PRIORITY_WEIGHTS = [1200, 800, 500, 250];
-
-    function normalizeRuleItems(rawRules) {
-      if (Array.isArray(rawRules)) {
-        const valid = rawRules.filter(r => r && RULE_CATALOG[r.id]);
-        DEFAULT_RULE_ITEMS.forEach(def => {
-          if (!valid.some(v => v.id === def.id)) valid.push(def);
-        });
-        return valid;
-      }
-      if (rawRules && typeof rawRules === 'object') {
-        return DEFAULT_RULE_ITEMS.map(def => ({
-          id: def.id,
-          enabled: rawRules[def.id] !== undefined ? !!rawRules[def.id] : def.enabled
-        }));
-      }
-      return DEFAULT_RULE_ITEMS;
-    }
-
-    // 日本の祝日自動算出エンジン（何年先でもオフラインで正確に算出＋API取得のフォールバック）
-    function computeJapaneseHolidaysForYear(y) {
-      const map = {};
-      const pad = (n) => String(n).padStart(2, '0');
-      const setH = (m, d, name) => { map[`${y}-${pad(m)}-${pad(d)}`] = name; };
-      const nthMonday = (m, nth) => {
-        const firstDow = new Date(y, m - 1, 1).getDay();
-        const firstMon = 1 + ((8 - firstDow) % 7);
-        return firstMon + (nth - 1) * 7;
-      };
-
-      setH(1, 1, '元日');
-      setH(1, nthMonday(1, 2), '成人の日');
-      setH(2, 11, '建国記念の日');
-      setH(2, 23, '天皇誕生日');
-      const vernal = Math.floor(20.8431 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4));
-      setH(3, vernal, '春分の日');
-      setH(4, 29, '昭和の日');
-      setH(5, 3, '憲法記念日');
-      setH(5, 4, 'みどりの日');
-      setH(5, 5, 'こどもの日');
-      setH(7, nthMonday(7, 3), '海の日');
-      setH(8, 11, '山の日');
-      setH(9, nthMonday(9, 3), '敬老の日');
-      const autumnal = Math.floor(23.2488 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4));
-      setH(9, autumnal, '秋分の日');
-      setH(10, nthMonday(10, 2), 'スポーツの日');
-      setH(11, 3, '文化の日');
-      setH(11, 23, '勤労感謝の日');
-
-      // 国民の休日（敬老の日と秋分の日に挟まれた平日）
-      for (let d = 15; d <= 25; d++) {
-        const kPrev = `${y}-09-${pad(d - 1)}`;
-        const kCurr = `${y}-09-${pad(d)}`;
-        const kNext = `${y}-09-${pad(d + 1)}`;
-        if (map[kPrev] && !map[kCurr] && map[kNext] && new Date(y, 8, d).getDay() !== 0) {
-          map[kCurr] = '国民の休日';
-        }
-      }
-
-      // 振替休日（日曜が祝日の場合、直後の祝日でない日を振替休日にする）
-      const baseKeys = Object.keys(map).sort();
-      baseKeys.forEach(k => {
-        const [yy, mm, dd] = k.split('-').map(Number);
-        const dt = new Date(yy, mm - 1, dd);
-        if (dt.getDay() === 0) {
-          let nextDt = new Date(yy, mm - 1, dd + 1);
-          while (true) {
-            const nk = `${nextDt.getFullYear()}-${pad(nextDt.getMonth() + 1)}-${pad(nextDt.getDate())}`;
-            if (!map[nk]) {
-              map[nk] = '振替休日';
-              break;
-            }
-            nextDt.setDate(nextDt.getDate() + 1);
-          }
-        }
-      });
-
-      return map;
-    }
+    const DEFAULT_RULES = {
+      excludePmLeave: true,
+      avoidBeforeFullLeave: true,
+      avoidSameWeekMultiple: true,
+      excludeAmLeave: false,
+      ruleOrder: DEFAULT_RULE_ORDER
+    };
 
     const LEAVE_TYPES = [
       { id: 'full', label: '全日有休', short: '全休', band: 'full', bg: 'bg-rose-300/80', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
@@ -238,6 +165,40 @@
       { id: 'pm_3h', label: '午後3時間休', short: '後3h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
       { id: 'ng', label: 'オンコール不可(定時)', short: '定時', band: 'none', bg: '', badge: 'bg-slate-100 text-slate-700 border-slate-300' },
     ];
+
+    // 2026年〜2028年 日本の祝日データ
+    const HOLIDAYS_JP = {
+      // 2026年
+      '2026-01-01': '元日', '2026-01-12': '成人の日', '2026-02-11': '建国記念の日', '2026-02-23': '天皇誕生日',
+      '2026-03-20': '春分の日', '2026-04-29': '昭和の日', '2026-05-03': '憲法記念日', '2026-05-04': 'みどりの日',
+      '2026-05-05': 'こどもの日', '2026-05-06': '振替休日', '2026-07-20': '海の日', '2026-08-11': '山の日',
+      '2026-09-21': '敬老の日', '2026-09-22': '国民の休日', '2026-09-23': '秋分の日', '2026-10-12': 'スポーツの日',
+      '2026-11-03': '文化の日', '2026-11-23': '勤労感謝の日',
+      // 2027年
+      '2027-01-01': '元日', '2027-01-11': '成人の日', '2027-02-11': '建国記念の日', '2027-02-23': '天皇誕生日',
+      '2027-03-21': '春分の日', '2027-03-22': '振替休日', '2027-04-29': '昭和の日', '2027-05-03': '憲法記念日',
+      '2027-05-04': 'みどりの日', '2027-05-05': 'こどもの日', '2027-07-19': '海の日', '2027-08-11': '山の日',
+      '2027-09-20': '敬老の日', '2027-09-23': '秋分の日', '2027-10-11': 'スポーツの日', '2027-11-03': '文化の日',
+      '2027-11-23': '勤労感謝の日',
+      // 2028年
+      '2028-01-01': '元日', '2028-01-10': '成人の日', '2028-02-11': '建国記念の日', '2028-02-23': '天皇誕生日',
+      '2028-03-20': '春分の日', '2028-04-29': '昭和の日', '2028-05-03': '憲法記念日', '2028-05-04': 'みどりの日',
+      '2028-05-05': 'こどもの日', '2028-07-17': '海の日', '2028-08-11': '山の日', '2028-09-18': '敬老の日',
+      '2028-09-22': '秋分の日', '2028-10-09': 'スポーツの日', '2028-11-03': '文化の日', '2028-11-23': '勤労感謝の日'
+    };
+
+    function normalizeRules(raw) {
+      const merged = { ...DEFAULT_RULES, ...(raw || {}) };
+      delete merged.avoidConsecutive;
+      const validOrder = Array.isArray(merged.ruleOrder)
+        ? merged.ruleOrder.filter(k => RULE_DEFINITIONS[k])
+        : [];
+      DEFAULT_RULE_ORDER.forEach(k => {
+        if (!validOrder.includes(k)) validOrder.push(k);
+      });
+      merged.ruleOrder = validOrder;
+      return merged;
+    }
 
     function parseFirebaseConfigInput(rawText) {
       if (!rawText || !rawText.trim()) return null;
@@ -261,28 +222,6 @@
       const [slideAnim, setSlideAnim] = useState({ dir: '', seq: 0 });
       const [toastMsg, setToastMsg] = useState(null);
 
-      // 祝日データ（自動計算＋API自動取得）
-      const [apiHolidays, setApiHolidays] = useState(() => {
-        try {
-          const cached = localStorage.getItem('oncall_holidays_api_cache');
-          return cached ? JSON.parse(cached) : {};
-        } catch (e) {
-          return {};
-        }
-      });
-
-      useEffect(() => {
-        fetch('https://holidays-jp.github.io/api/v1/date.json')
-          .then(res => res.ok ? res.json() : null)
-          .then(data => {
-            if (data && typeof data === 'object') {
-              setApiHolidays(data);
-              localStorage.setItem('oncall_holidays_api_cache', JSON.stringify(data));
-            }
-          })
-          .catch(() => {});
-      }, []);
-
       const [members, setMembers] = useState(() => {
         const saved = localStorage.getItem('oncall_members_v3');
         return saved ? JSON.parse(saved) : DEFAULT_MEMBERS;
@@ -299,18 +238,13 @@
         const saved = localStorage.getItem('oncall_target_days_v3');
         return saved ? JSON.parse(saved) : [1, 2, 3, 4, 5];
       });
-      const [ruleItems, setRuleItems] = useState(() => {
-        const saved = localStorage.getItem('oncall_rule_items_v4');
-        if (saved) return normalizeRuleItems(JSON.parse(saved));
-        const legacy = localStorage.getItem('oncall_rules_v3');
-        return legacy ? normalizeRuleItems(JSON.parse(legacy)) : DEFAULT_RULE_ITEMS;
+      const [rules, setRules] = useState(() => {
+        const saved = localStorage.getItem('oncall_rules_v3');
+        return saved ? normalizeRules(JSON.parse(saved)) : DEFAULT_RULES;
       });
 
-      // ドラッグ＆ドロップ並び替え用ステート
-      const [draggingRuleIdx, setDraggingRuleIdx] = useState(null);
-
       // クラウド同期状態
-      const [syncStatus, setSyncStatus] = useState('init');
+      const [syncStatus, setSyncStatus] = useState('init'); // 'connected' | 'local' | 'error' | 'init'
       const [syncErrorDetail, setSyncErrorDetail] = useState('');
       const [customConfigText, setCustomConfigText] = useState(() => localStorage.getItem('oncall_firebase_config_raw') || '');
       const docRefHolder = useRef(null);
@@ -323,18 +257,19 @@
       const touchStartY = useRef(null);
       const didSwipeRef = useRef(false);
 
+      // ローカルキャッシュ保存
       useEffect(() => { localStorage.setItem('oncall_members_v3', JSON.stringify(members)); }, [members]);
       useEffect(() => { localStorage.setItem('oncall_leaves_v3', JSON.stringify(leaves)); }, [leaves]);
       useEffect(() => { localStorage.setItem('oncall_assign_v3', JSON.stringify(oncalls)); }, [oncalls]);
       useEffect(() => { localStorage.setItem('oncall_target_days_v3', JSON.stringify(targetDays)); }, [targetDays]);
-      useEffect(() => { localStorage.setItem('oncall_rule_items_v4', JSON.stringify(ruleItems)); }, [ruleItems]);
+      useEffect(() => { localStorage.setItem('oncall_rules_v3', JSON.stringify(rules)); }, [rules]);
 
       const showToast = (msg) => {
         setToastMsg(msg);
         setTimeout(() => setToastMsg(null), 2200);
       };
 
-      // Firebase Firestore リアルタイム同期
+      // Firebase Firestore リアルタイム同期セットアップ
       useEffect(() => {
         let unsubscribeSnapshot = null;
         let unsubscribeAuth = null;
@@ -343,8 +278,12 @@
           try {
             let fbConfig = null;
             const savedRaw = localStorage.getItem('oncall_firebase_config_raw');
-            if (savedRaw) fbConfig = parseFirebaseConfigInput(savedRaw);
-            if (!fbConfig && CUSTOM_FIREBASE_CONFIG) fbConfig = CUSTOM_FIREBASE_CONFIG;
+            if (savedRaw) {
+              fbConfig = parseFirebaseConfigInput(savedRaw);
+            }
+            if (!fbConfig && CUSTOM_FIREBASE_CONFIG) {
+              fbConfig = CUSTOM_FIREBASE_CONFIG;
+            }
             if (!fbConfig && typeof __firebase_config !== 'undefined' && __firebase_config) {
               fbConfig = JSON.parse(__firebase_config);
             }
@@ -375,18 +314,14 @@
                     if (data.leaves) setLeaves(data.leaves);
                     if (data.oncalls) setOncalls(data.oncalls);
                     if (data.targetDays) setTargetDays(data.targetDays);
-                    if (data.ruleItems) {
-                      setRuleItems(normalizeRuleItems(data.ruleItems));
-                    } else if (data.rules) {
-                      setRuleItems(normalizeRuleItems(data.rules));
-                    }
+                    if (data.rules) setRules(prev => normalizeRules({ ...prev, ...data.rules }));
                   } else {
                     sharedDocRef.set({
                       members,
                       leaves,
                       oncalls,
                       targetDays,
-                      ruleItems,
+                      rules,
                       updatedAt: Date.now()
                     }, { merge: true }).catch(() => {});
                   }
@@ -454,38 +389,25 @@
         });
       };
 
-      const updateRuleItems = (updater) => {
-        setRuleItems(prev => {
-          const next = typeof updater === 'function' ? updater(prev) : updater;
-          pushToCloud({ ruleItems: next });
+      const updateRules = (updater) => {
+        setRules(prev => {
+          const rawNext = typeof updater === 'function' ? updater(prev) : updater;
+          const next = normalizeRules(rawNext);
+          pushToCloud({ rules: next });
           return next;
         });
       };
 
-      // ルールの順序入れ替えヘルパー
-      const moveRuleItem = (fromIdx, toIdx) => {
-        if (toIdx < 0 || toIdx >= ruleItems.length || fromIdx === toIdx) return;
-        updateRuleItems(prev => {
-          const copy = [...prev];
-          const [moved] = copy.splice(fromIdx, 1);
-          copy.splice(toIdx, 0, moved);
-          return copy;
+      const moveRuleOrder = (index, direction) => {
+        updateRules(prev => {
+          const order = [...(prev.ruleOrder || DEFAULT_RULE_ORDER)];
+          const targetIdx = index + direction;
+          if (targetIdx < 0 || targetIdx >= order.length) return prev;
+          const temp = order[index];
+          order[index] = order[targetIdx];
+          order[targetIdx] = temp;
+          return { ...prev, ruleOrder: order };
         });
-      };
-
-      // スマホのタッチドラッグ並び替えハンドラー
-      const handleRuleTouchMove = (e) => {
-        if (draggingRuleIdx === null) return;
-        const touch = e.touches[0];
-        const el = document.elementFromPoint(touch.clientX, touch.clientY);
-        const row = el?.closest('[data-rule-index]');
-        if (row) {
-          const targetIdx = Number(row.getAttribute('data-rule-index'));
-          if (!Number.isNaN(targetIdx) && targetIdx !== draggingRuleIdx) {
-            moveRuleItem(draggingRuleIdx, targetIdx);
-            setDraggingRuleIdx(targetIdx);
-          }
-        }
       };
 
       const year = currentDate.getFullYear();
@@ -537,12 +459,6 @@
         touchStartY.current = null;
       };
 
-      // 表示中の年の祝日マップ（自動計算＋Web APIデータの統合）
-      const holidaysForYear = useMemo(() => {
-        const computed = computeJapaneseHolidaysForYear(year);
-        return { ...computed, ...apiHolidays };
-      }, [year, apiHolidays]);
-
       const calendarCells = useMemo(() => {
         const firstDay = new Date(year, month, 1);
         const lastDay = new Date(year, month + 1, 0);
@@ -556,11 +472,11 @@
           const key = `${year}-${mm}-${dd}`;
           const dow = new Date(year, month, d).getDay();
           const weekIndex = Math.floor((startOffset + d - 1) / 7);
-          cells.push({ day: d, key, dow, weekIndex, holiday: holidaysForYear[key] || null });
+          cells.push({ day: d, key, dow, weekIndex, holiday: HOLIDAYS_JP[key] || null });
         }
         while (cells.length % 7 !== 0) cells.push(null);
         return cells;
-      }, [year, month, holidaysForYear]);
+      }, [year, month]);
 
       const handleDateTap = (cell) => {
         if (didSwipeRef.current) {
@@ -583,6 +499,7 @@
           }
           return { ...prev, [selectedDateKey]: dayData };
         });
+        showToast('休暇・予定を登録しました');
         setSelectedDateKey(null);
       };
 
@@ -594,7 +511,7 @@
         });
       };
 
-      // 優先順位付き自動割付アルゴリズム
+      // 優先順位を反映した自動割付アルゴリズム
       const runAutoAssign = () => {
         const nextOncalls = { ...oncalls };
         const counts = {};
@@ -621,6 +538,10 @@
           }
         });
 
+        const order = rules.ruleOrder || DEFAULT_RULE_ORDER;
+        // 優先順位1位〜4位に応じた重み付けペナルティ（上位ほど絶対回避に近くなる）
+        const priorityWeights = [2000, 900, 400, 180];
+
         monthDays.forEach((cell, idx) => {
           if (nextOncalls[cell.key]?.locked) return;
           if (!targetDays.includes(cell.dow) || cell.holiday) return;
@@ -629,5 +550,761 @@
           const nextCell = monthDays[idx + 1];
           const nextDayLeaves = nextCell ? (leaves[nextCell.key] || {}) : {};
 
-          // 絶対除外条件（稼働外、非勤務曜日、全休、定時NG）
-          const baseCandidates = members.filter(m =>
+          // 絶対除外条件（全休・定時NG・非アクティブ・勤務曜日外）
+          const baseCandidates = members.filter(m => {
+            if (!m.active) return false;
+            if (!(m.workDays || []).includes(cell.dow)) return false;
+            const lType = dayLeaves[m.id];
+            if (lType === 'full' || lType === 'ng') return false;
+            return true;
+          });
+
+          if (baseCandidates.length === 0) return;
+
+          // 午後休・午前休の除外設定がONの場合、可能な限り除外し、全員該当してしまう場合は優先順位ペナルティで比較
+          const strictFiltered = baseCandidates.filter(m => {
+            const lType = dayLeaves[m.id];
+            if (rules.excludePmLeave && lType && lType.startsWith('pm')) return false;
+            if (rules.excludeAmLeave && lType && lType.startsWith('am')) return false;
+            return true;
+          });
+
+          const targetPool = strictFiltered.length > 0 ? strictFiltered : baseCandidates;
+
+          const scored = targetPool.map(m => {
+            const workDayRatio = Math.max(1, (m.workDays || []).filter(d => targetDays.includes(d)).length) / Math.max(1, targetDays.length);
+            let score = (counts[m.id] / workDayRatio) * 100;
+            if (cell.dow === 5) score += fridayCounts[m.id] * 45;
+
+            const lType = dayLeaves[m.id];
+
+            order.forEach((ruleKey, rankIdx) => {
+              if (!rules[ruleKey]) return;
+              const weight = priorityWeights[rankIdx] || 150;
+
+              if (ruleKey === 'excludePmLeave' && lType && lType.startsWith('pm')) {
+                score += weight * 2;
+              }
+              if (ruleKey === 'excludeAmLeave' && lType && lType.startsWith('am')) {
+                score += weight * 2;
+              }
+              if (ruleKey === 'avoidBeforeFullLeave' && nextDayLeaves[m.id] === 'full') {
+                score += weight;
+              }
+              if (ruleKey === 'avoidSameWeekMultiple') {
+                const sameWeekCount = weeklyCounts[m.id]?.[cell.weekIndex] || 0;
+                if (sameWeekCount > 0) score += sameWeekCount * weight;
+              }
+            });
+
+            score += Math.random() * 5;
+            return { member: m, score };
+          });
+
+          scored.sort((a, b) => a.score - b.score);
+          const chosen = scored[0].member;
+          nextOncalls[cell.key] = { memberId: chosen.id, locked: false };
+          counts[chosen.id] = (counts[chosen.id] || 0) + 1;
+          if (cell.dow === 5) fridayCounts[chosen.id] = (fridayCounts[chosen.id] || 0) + 1;
+          if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
+          weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
+        });
+
+        updateOncalls(nextOncalls);
+        setActiveTab('oncall');
+        showToast(`${month + 1}月のオンコールを自動割付しました`);
+      };
+
+      const saveCustomFirebaseConfig = () => {
+        const parsed = parseFirebaseConfigInput(customConfigText);
+        if (!parsed || !parsed.apiKey || !parsed.projectId) {
+          showToast('設定コードの形式が正しくありません');
+          return;
+        }
+        localStorage.setItem('oncall_firebase_config_raw', JSON.stringify(parsed));
+        showToast('設定を保存しました。再接続します...');
+        setTimeout(() => window.location.reload(), 600);
+      };
+
+      const clearCustomFirebaseConfig = () => {
+        localStorage.removeItem('oncall_firebase_config_raw');
+        setCustomConfigText('');
+        showToast('個別設定をリセットしました。再読み込みします...');
+        setTimeout(() => window.location.reload(), 600);
+      };
+
+      const monthlyStats = useMemo(() => {
+        const stats = {};
+        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0 }; });
+        calendarCells.filter(Boolean).forEach(c => {
+          const oc = oncalls[c.key]?.memberId;
+          if (oc && stats[oc]) {
+            stats[oc].oncall += 1;
+            if (c.dow === 5) stats[oc].fri += 1;
+          }
+          const dl = leaves[c.key] || {};
+          Object.entries(dl).forEach(([mid, type]) => {
+            if (stats[mid] && type !== 'ng') stats[mid].leave += 1;
+          });
+        });
+        return stats;
+      }, [members, calendarCells, oncalls, leaves]);
+
+      const slideClass = slideAnim.dir === 'next'
+        ? 'anim-slide-next'
+        : slideAnim.dir === 'prev'
+        ? 'anim-slide-prev'
+        : '';
+
+      const orderedRuleKeys = rules.ruleOrder || DEFAULT_RULE_ORDER;
+
+      return (
+        <div
+          className="max-w-md mx-auto min-h-screen flex flex-col bg-slate-50 pb-20 select-none overflow-x-hidden"
+          onTouchStart={activeTab !== 'settings' ? handleTouchStart : undefined}
+          onTouchEnd={activeTab !== 'settings' ? handleTouchEnd : undefined}
+          onMouseDown={activeTab !== 'settings' ? handleMouseDown : undefined}
+          onMouseUp={activeTab !== 'settings' ? handleMouseUp : undefined}
+        >
+          {/* トースト通知 */}
+          {toastMsg && (
+            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg pointer-events-none">
+              {toastMsg}
+            </div>
+          )}
+
+          {/* 最上部ヘッダー */}
+          <header className="bg-white border-b border-slate-200 px-3 py-2.5 sticky top-0 z-20">
+            <div className="relative flex items-center justify-center min-h-[32px]">
+              {/* 左端：リアルタイム同期ステータス */}
+              <div className="absolute left-0 flex items-center">
+                {syncStatus === 'connected' && (
+                  <button
+                    onClick={() => { setActiveTab('settings'); setSettingsSubTab('cloud'); }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    同期中
+                  </button>
+                )}
+                {syncStatus === 'local' && (
+                  <button
+                    onClick={() => { setActiveTab('settings'); setSettingsSubTab('cloud'); }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full"
+                  >
+                    ⚪ 未同期
+                  </button>
+                )}
+                {syncStatus === 'error' && (
+                  <button
+                    onClick={() => { setActiveTab('settings'); setSettingsSubTab('cloud'); }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full"
+                  >
+                    🔴 同期エラー
+                  </button>
+                )}
+              </div>
+
+              {activeTab !== 'settings' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => changeMonth(-1)}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200 text-xs font-bold"
+                      aria-label="前月"
+                    >
+                      ◀
+                    </button>
+                    <div key={`title-${slideAnim.seq}`} className={`text-lg font-extrabold tracking-tight text-slate-800 ${slideClass}`}>
+                      {year}年 {month + 1}月
+                    </div>
+                    <button
+                      onClick={() => changeMonth(1)}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 active:bg-slate-200 text-xs font-bold"
+                      aria-label="翌月"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                  {activeTab === 'oncall' && (
+                    <div className="absolute right-0 flex items-center">
+                      <button
+                        onClick={runAutoAssign}
+                        className="px-3 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 transition"
+                      >
+                        割り振り
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-base font-extrabold tracking-tight text-slate-800">
+                  ⚙ 設定（自動割付・メンバー・同期）
+                </div>
+              )}
+            </div>
+          </header>
+
+          {/* メインコンテンツ */}
+          {activeTab !== 'settings' ? (
+            <main key={`cal-${slideAnim.seq}`} className={`p-1.5 flex-1 ${slideClass}`}>
+              <div className="grid grid-cols-7 bg-slate-200 gap-px border border-slate-200 rounded-t-lg overflow-hidden">
+                {WEEKDAYS.map((w, i) => (
+                  <div key={w} className={`bg-slate-100 text-center py-1 text-[11px] font-bold ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-blue-600' : 'text-slate-700'}`}>
+                    {w}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 bg-slate-200 gap-px border-x border-b border-slate-200 rounded-b-lg overflow-hidden">
+                {calendarCells.map((cell, idx) => {
+                  if (!cell) return <div key={`empty-${idx}`} className="bg-slate-50/70 min-h-[82px]" />;
+                  const dayLeaves = leaves[cell.key] || {};
+                  const oncallInfo = oncalls[cell.key];
+                  const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
+                  const isSunOrHol = cell.dow === 0 || !!cell.holiday;
+                  const isSat = cell.dow === 6;
+
+                  return (
+                    <div
+                      key={cell.key}
+                      onClick={() => handleDateTap(cell)}
+                      className="bg-white min-h-[82px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden"
+                    >
+                      <div className="flex items-baseline justify-between px-0.5 leading-none mb-0.5">
+                        <span className={`text-[11px] font-bold ${isSunOrHol ? 'text-rose-600' : isSat ? 'text-blue-600' : 'text-slate-800'}`}>
+                          {cell.day}
+                        </span>
+                        {cell.holiday && (
+                          <span className="text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">
+                            {cell.holiday}
+                          </span>
+                        )}
+                      </div>
+
+                      {activeTab === 'leave' ? (
+                        <div className="flex flex-col gap-[2px] flex-1">
+                          {Object.entries(dayLeaves).map(([mid, lType]) => {
+                            const mem = members.find(m => m.id === mid);
+                            if (!mem) return null;
+                            const typeObj = LEAVE_TYPES.find(t => t.id === lType);
+                            if (!typeObj) return null;
+
+                            let bandStyle = '';
+                            if (typeObj.band === 'full') bandStyle = 'inset-0';
+                            else if (typeObj.band === 'left-half') bandStyle = 'inset-y-0 left-0 w-1/2';
+                            else if (typeObj.band === 'right-half') bandStyle = 'inset-y-0 right-0 w-1/2';
+                            else if (typeObj.band === 'left-short') bandStyle = 'inset-y-0 left-0 w-[35%]';
+                            else if (typeObj.band === 'right-short') bandStyle = 'inset-y-0 right-0 w-[35%]';
+
+                            const displayText = lType === 'ng' ? `${mem.name}定時` : mem.name;
+
+                            return (
+                              <div key={mid} className="relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-200/60">
+                                {typeObj.band !== 'none' && (
+                                  <div className={`absolute ${bandStyle} ${typeObj.bg} pointer-events-none`} />
+                                )}
+                                <span className="relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
+                                  {displayText}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col justify-center items-center">
+                          {oncallMember ? (
+                            <div className={`w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-900 border-indigo-200'}`}>
+                              <div className="text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
+                                {oncallMember.name}
+                              </div>
+                            </div>
+                          ) : (
+                            targetDays.includes(cell.dow) && !cell.holiday && (
+                              <span className="text-[8.5px] text-slate-300">未割当</span>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </main>
+          ) : (
+            /* ⚙ 設定タブ画面 */
+            <main className="p-3 flex-1 space-y-4">
+              <div className="grid grid-cols-3 gap-1 bg-slate-200/80 p-1 rounded-xl">
+                <button
+                  onClick={() => setSettingsSubTab('auto')}
+                  className={`py-2 text-[11px] font-bold rounded-lg transition ${settingsSubTab === 'auto' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}
+                >
+                  自動割付設定
+                </button>
+                <button
+                  onClick={() => setSettingsSubTab('member')}
+                  className={`py-2 text-[11px] font-bold rounded-lg transition ${settingsSubTab === 'member' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}
+                >
+                  メンバー編集
+                </button>
+                <button
+                  onClick={() => setSettingsSubTab('cloud')}
+                  className={`py-2 text-[11px] font-bold rounded-lg transition ${settingsSubTab === 'cloud' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}
+                >
+                  ☁ クラウド同期
+                </button>
+              </div>
+
+              {settingsSubTab === 'auto' && (
+                <div className="space-y-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-700">1. オンコール対象曜日の選択</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => updateTargetDays([1,2,3,4,5])} className="text-[10px] px-2 py-0.5 bg-slate-100 rounded border">平日のみ</button>
+                        <button onClick={() => updateTargetDays([0,1,2,3,4,5,6])} className="text-[10px] px-2 py-0.5 bg-slate-100 rounded border">毎日</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {WEEKDAYS.map((w, dow) => {
+                        const active = targetDays.includes(dow);
+                        return (
+                          <button
+                            key={w}
+                            onClick={() => updateTargetDays(prev => prev.includes(dow) ? prev.filter(d => d !== dow) : [...prev, dow])}
+                            className={`py-2 rounded-lg text-xs font-bold border ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-300'}`}
+                          >
+                            {w}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-700">2. 担当メンバー選択 ＆ 勤務曜日設定 ({month + 1}月集計)</div>
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                      {members.map(m => (
+                        <div key={m.id} className="p-2 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2 font-bold text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={m.active}
+                                onChange={(e) => updateMembers(prev => prev.map(x => x.id === m.id ? { ...x, active: e.target.checked } : x))}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                              <span>{m.name}</span>
+                            </label>
+                            <span className="text-[10px] text-slate-500">
+                              今月: OC {monthlyStats[m.id]?.oncall || 0}回 (金:{monthlyStats[m.id]?.fri || 0}) / 休:{monthlyStats[m.id]?.leave || 0}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {WEEKDAYS.map((w, dow) => {
+                              const isWork = (m.workDays || []).includes(dow);
+                              return (
+                                <button
+                                  key={w}
+                                  onClick={() => updateMembers(prev => prev.map(x => {
+                                    if (x.id !== m.id) return x;
+                                    const wd = x.workDays || [];
+                                    return { ...x, workDays: wd.includes(dow) ? wd.filter(d => d !== dow) : [...wd, dow] };
+                                  }))}
+                                  className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                                >
+                                  {w}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 3. 配慮・除外ルール（上下ボタンによる優先順位付け対応） */}
+                  <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-700">3. 配慮・除外ルール（優先順）</span>
+                      <span className="text-[10px] text-slate-500">▲▼で優先度を並び替え</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {orderedRuleKeys.map((ruleKey, idx) => {
+                        const def = RULE_DEFINITIONS[ruleKey];
+                        if (!def) return null;
+                        const enabled = !!rules[ruleKey];
+                        return (
+                          <div
+                            key={ruleKey}
+                            className={`flex items-center justify-between gap-2 p-2 rounded-lg border transition ${
+                              enabled ? 'bg-white border-indigo-200 shadow-sm' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                            }`}
+                          >
+                            <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={enabled}
+                                onChange={e => updateRules({ ...rules, [ruleKey]: e.target.checked })}
+                                className="w-4 h-4 mt-0.5 accent-indigo-600 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`inline-flex items-center justify-center px-1.5 py-0.2 rounded text-[10px] font-extrabold ${
+                                    enabled ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'
+                                  }`}>
+                                    優先{idx + 1}
+                                  </span>
+                                  <span className="font-bold text-slate-800 leading-snug">{def.label}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">{def.desc}</div>
+                              </div>
+                            </label>
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveRuleOrder(idx, -1)}
+                                className="w-6 h-5 flex items-center justify-center rounded bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-600 disabled:opacity-30 active:bg-slate-200"
+                                title="優先度を上げる"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === orderedRuleKeys.length - 1}
+                                onClick={() => moveRuleOrder(idx, 1)}
+                                className="w-6 h-5 flex items-center justify-center rounded bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-600 disabled:opacity-30 active:bg-slate-200"
+                                title="優先度を下げる"
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={runAutoAssign}
+                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm shadow-md active:scale-[0.99]"
+                  >
+                    この条件で {year}年{month + 1}月 を自動割付する
+                  </button>
+                </div>
+              )}
+
+              {settingsSubTab === 'member' && (
+                <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="text-xs font-bold text-slate-700">メンバー登録・勤務曜日編集</div>
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                    {members.map((m, idx) => (
+                      <div key={m.id} className="p-2.5 border border-slate-200 rounded-xl space-y-2 bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}.</span>
+                          <input
+                            type="text"
+                            value={m.name}
+                            onChange={(e) => updateMembers(prev => prev.map(x => x.id === m.id ? { ...x, name: e.target.value } : x))}
+                            className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white"
+                          />
+                          <button
+                            onClick={() => updateMembers(prev => prev.filter(x => x.id !== m.id))}
+                            className="text-xs text-rose-600 font-bold px-2.5 py-1 bg-rose-50 rounded-lg border border-rose-200"
+                          >
+                            削除
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {WEEKDAYS.map((w, dow) => {
+                            const isWork = (m.workDays || []).includes(dow);
+                            return (
+                              <button
+                                key={w}
+                                onClick={() => updateMembers(prev => prev.map(x => {
+                                  if (x.id !== m.id) return x;
+                                  const wd = x.workDays || [];
+                                  return { ...x, workDays: wd.includes(dow) ? wd.filter(d => d !== dow) : [...wd, dow] };
+                                }))}
+                                className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                              >
+                                {w}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => updateMembers(prev => [...prev, { id: 'm' + Date.now(), name: `メンバー${prev.length + 1}`, active: true, workDays: [1,2,3,4,5] }])}
+                    className="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 active:bg-slate-200"
+                  >
+                    ＋ メンバー追加
+                  </button>
+                </div>
+              )}
+
+              {settingsSubTab === 'cloud' && (
+                <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">リアルタイム共有ステータス</span>
+                    {syncStatus === 'connected' && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-full">🟢 クラウド同期中 (pto-oncall-calendar)</span>}
+                    {syncStatus === 'local' && <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold rounded-full">⚪ この端末のみ保存</span>}
+                    {syncStatus === 'error' && <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-bold rounded-full">🔴 接続エラー</span>}
+                  </div>
+
+                  {syncErrorDetail && (
+                    <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-[11px]">
+                      エラー詳細: {syncErrorDetail}
+                    </div>
+                  )}
+
+                  <p className="text-slate-600 leading-relaxed">
+                    Firebaseプロジェクト（<code className="bg-slate-100 px-1 rounded">pto-oncall-calendar</code>）がコード内に組み込まれているため、URLを開いた全員のスマホで自動同期されます。
+                  </p>
+
+                  <textarea
+                    rows={5}
+                    value={customConfigText}
+                    onChange={(e) => setCustomConfigText(e.target.value)}
+                    placeholder={'別のFirebase設定に上書きする場合のみ貼り付け'}
+                    className="w-full font-mono text-[11px] p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveCustomFirebaseConfig}
+                      className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-sm active:scale-95"
+                    >
+                      設定を上書き保存
+                    </button>
+                    {localStorage.getItem('oncall_firebase_config_raw') && (
+                      <button
+                        onClick={clearCustomFirebaseConfig}
+                        className="px-3 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl border border-slate-300"
+                      >
+                        上書き解除
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* アプリ更新チェック（再インストール不要で最新版を取得） */}
+              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-700">アプリの更新・再読み込み</div>
+                  <div className="text-[10px] text-slate-400">データはクラウドに保持されたまま最新版を取得します</div>
+                </div>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 active:bg-slate-200"
+                >
+                  🔄 最新版を取得
+                </button>
+              </div>
+            </main>
+          )}
+
+          {/* 日付タップモーダル（確認画面と新規登録画面の境界を明確化） */}
+          {selectedDateKey && (
+            <div
+              className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+              onClick={() => setSelectedDateKey(null)}
+            >
+              <div
+                className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* モーダルヘッダー */}
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-extrabold text-slate-800">{selectedDateKey}</span>
+                    {HOLIDAYS_JP[selectedDateKey] && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full">
+                        {HOLIDAYS_JP[selectedDateKey]}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setSelectedDateKey(null)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold text-xs active:bg-slate-200"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* セクション1：現在の登録状況（確認・変更画面） */}
+                <div className="bg-slate-100/90 rounded-2xl p-3.5 border-2 border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-700 bg-white px-2.5 py-1 rounded-full border border-slate-200 shadow-sm">
+                      📋 現在の登録状況（確認・解除）
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      {Object.keys(leaves[selectedDateKey] || {}).length}件
+                    </span>
+                  </div>
+
+                  {Object.keys(leaves[selectedDateKey] || {}).length === 0 ? (
+                    <div className="text-xs text-slate-400 bg-white/80 rounded-xl py-3 text-center border border-dashed border-slate-300">
+                      登録されている有給休暇・NGはありません
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {Object.entries(leaves[selectedDateKey] || {}).map(([mid, lType]) => {
+                        const mem = members.find(m => m.id === mid);
+                        const tObj = LEAVE_TYPES.find(t => t.id === lType);
+                        if (!mem || !tObj) return null;
+                        return (
+                          <div key={mid} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-xs text-slate-800">{mem.name}</span>
+                              <span className={`text-[11px] px-2 py-0.5 rounded-md border font-bold ${tObj.badge}`}>
+                                {tObj.label}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => removeLeaveEntry(selectedDateKey, mid)}
+                              className="text-[11px] text-rose-600 font-bold px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-lg active:bg-rose-100"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* オンコール担当の確認・手動ロック変更 */}
+                  <div className="pt-2.5 border-t border-slate-200/80 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-extrabold text-indigo-800">🏥 オンコール担当</span>
+                      {oncalls[selectedDateKey]?.locked && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">
+                          固定中
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={oncalls[selectedDateKey]?.memberId || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateOncalls(prev => {
+                          const next = { ...prev };
+                          if (!val) delete next[selectedDateKey];
+                          else next[selectedDateKey] = { memberId: val, locked: true };
+                          return next;
+                        });
+                      }}
+                      className="text-xs border border-indigo-200 rounded-lg px-2.5 py-1.5 bg-white font-bold text-slate-800 shadow-sm"
+                    >
+                      <option value="">未割当</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 境界ディバイダー */}
+                <div className="relative flex items-center py-0.5">
+                  <div className="flex-grow border-t-2 border-dashed border-rose-200"></div>
+                  <span className="shrink-0 mx-2 px-3 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[11px] font-extrabold text-rose-700">
+                    ▼ 新規登録・上書きはこちら ▼
+                  </span>
+                  <div className="flex-grow border-t-2 border-dashed border-rose-200"></div>
+                </div>
+
+                {/* セクション2：新規登録画面 */}
+                <div className="bg-rose-50/50 rounded-2xl p-3.5 border-2 border-rose-200/80 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-rose-800 bg-white px-2.5 py-1 rounded-full border border-rose-200 shadow-sm">
+                      ✏️ 休暇・オンコール不可の新規登録
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-bold text-slate-700">1. メンバーを選択</div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {members.map(m => (
+                        <button
+                          key={m.id}
+                          onClick={() => setFormMemberId(m.id)}
+                          className={`py-2 px-1 rounded-xl text-xs font-bold border transition ${
+                            formMemberId === m.id
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300'
+                          }`}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-bold text-slate-700">2. 休暇・NG種別を選択</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {LEAVE_TYPES.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setFormLeaveType(t.id)}
+                          className={`py-2 px-2.5 rounded-xl text-xs font-bold border text-left transition ${
+                            formLeaveType === t.id
+                              ? 'ring-2 ring-rose-500 bg-white border-rose-500 text-rose-900 shadow-sm'
+                              : 'bg-white border-slate-300 text-slate-700'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={saveLeaveAndClose}
+                    className="w-full py-3 bg-rose-600 text-white font-extrabold rounded-xl text-sm shadow-md active:scale-[0.99] transition"
+                  >
+                    この内容で登録して閉じる
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 画面下部 3タブ ボトムナビゲーション */}
+          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30">
+            <div className="max-w-md mx-auto grid grid-cols-3 h-14">
+              <button
+                onClick={() => setActiveTab('leave')}
+                className={`flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'leave' ? 'text-rose-600 font-extrabold' : 'text-slate-400 font-bold'}`}
+              >
+                <span className="text-base leading-none">📅</span>
+                <span className="text-[11px]">有給休暇</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('oncall')}
+                className={`flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'oncall' ? 'text-indigo-600 font-extrabold' : 'text-slate-400 font-bold'}`}
+              >
+                <span className="text-base leading-none">🏥</span>
+                <span className="text-[11px]">オンコール</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`flex flex-col items-center justify-center gap-0.5 transition ${activeTab === 'settings' ? 'text-slate-900 font-extrabold' : 'text-slate-400 font-bold'}`}
+              >
+                <span className="text-base leading-none">⚙</span>
+                <span className="text-[11px]">設定</span>
+              </button>
+            </div>
+          </nav>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
