@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="有給＆OC管理" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>有給＆オンコール管理</title>
+  <script>
+    // 単一HTMLファイルで動作するPWA用アイコン＆Manifestの動的生成
+    (function () {
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4f46e5"/>
+            <stop offset="100%" stop-color="#e11d48"/>
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+        <rect x="86" y="116" width="340" height="310" rx="36" fill="#ffffff"/>
+        <path d="M86 152a36 36 0 0 1 36-36h268a36 36 0 0 1 36 36v54H86v-54z" fill="#e11d48"/>
+        <circle cx="176" cy="152" r="16" fill="#ffffff"/>
+        <circle cx="336" cy="152" r="16" fill="#ffffff"/>
+        <text x="256" y="335" font-family="sans-serif" font-size="135" font-weight="900" text-anchor="middle" fill="#1e293b">OC</text>
+      </svg>`;
+      const iconUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(svgIcon);
+
+      const appleIcon = document.createElement('link');
+      appleIcon.rel = 'apple-touch-icon';
+      appleIcon.href = iconUrl;
+      document.head.appendChild(appleIcon);
+
+      const favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      favicon.type = 'image/svg+xml';
+      favicon.href = iconUrl;
+      document.head.appendChild(favicon);
+
+      const manifest = {
+        name: '有給＆オンコール管理',
+        short_name: '有給＆OC管理',
+        display: 'standalone',
+        background_color: '#f8fafc',
+        theme_color: '#ffffff',
+        start_url: './index.html',
+        icons: [
+          {
+            src: iconUrl,
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          }
+        ]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = URL.createObjectURL(manifestBlob);
+      document.head.appendChild(manifestLink);
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .safe-bottom-nav {
+      padding-bottom: calc(0.375rem + env(safe-area-inset-bottom));
+    }
+    @keyframes slideInFromRight {
+      0% {
+        transform: translateX(100%);
+        opacity: 0.3;
+      }
+      100% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes slideInFromLeft {
+      0% {
+        transform: translateX(-100%);
+        opacity: 0.3;
+      }
+      100% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes fadeSlideIn {
+      0% {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-month-next {
+      animation: slideInFromRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .animate-month-prev {
+      animation: slideInFromLeft 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .animate-tab-fade {
+      animation: fadeSlideIn 0.18s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+    const DEFAULT_MEMBERS = [
+      { id: 'm1', name: '佐藤', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm2', name: '鈴木', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm3', name: '高橋', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm4', name: '田中', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm5', name: '伊藤', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm6', name: '渡辺', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm7', name: '山本', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm8', name: '中村', active: true, workDays: [1, 2, 3, 4, 5] },
+    ];
+
+    const LEAVE_TYPES = [
+      { id: 'full', label: '全日有休', short: '全休', band: 'full', bg: 'bg-rose-300/80', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
+      { id: 'am', label: '午前休', short: '午前休', band: 'left-half', bg: 'bg-amber-300/80', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
+      { id: 'pm', label: '午後休', short: '午後休', band: 'right-half', bg: 'bg-orange-300/80', badge: 'bg-orange-100 text-orange-800 border-orange-300' },
+      { id: 'am_1h', label: '午前1時間休', short: '前1h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'am_2h', label: '午前2時間休', short: '前2h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'am_3h', label: '午前3時間休', short: '前3h', band: 'left-short', bg: 'bg-sky-300/80', badge: 'bg-sky-100 text-sky-800 border-sky-300' },
+      { id: 'pm_1h', label: '午後1時間休', short: '後1h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'pm_2h', label: '午後2時間休', short: '後2h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'pm_3h', label: '午後3時間休', short: '後3h', band: 'right-short', bg: 'bg-teal-300/80', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'ng', label: 'オンコール不可(定時)', short: '定時', band: 'none', bg: '', badge: 'bg-slate-100 text-slate-700 border-slate-300' },
+    ];
+
+    const HOLIDAYS_JP = {
+      '2026-01-01': '元日', '2026-01-12': '成人の日', '2026-02-11': '建国記念の日', '2026-02-23': '天皇誕生日',
+      '2026-03-20': '春分の日', '2026-04-29': '昭和の日', '2026-05-03': '憲法記念日', '2026-05-04': 'みどりの日',
+      '2026-05-05': 'こどもの日', '2026-05-06': '振替休日', '2026-07-20': '海の日', '2026-08-11': '山の日',
+      '2026-09-21': '敬老の日', '2026-09-22': '国民の休日', '2026-09-23': '秋分の日', '2026-10-12': 'スポーツの日',
+      '2026-11-03': '文化の日', '2026-11-23': '勤労感謝の日'
+    };
+
+    function App() {
+      // 下部3タブ: 'leave' (有給休暇) | 'oncall' (オンコール) | 'settings' (⚙ 設定)
+      const [activeTab, setActiveTab] = useState('leave');
+      const [settingsSubTab, setSettingsSubTab] = useState('auto'); // 'auto' | 'member'
+      const [currentDate, setCurrentDate] = useState(new Date(2026, 10, 1));
+      const [slideDirection, setSlideDirection] = useState(null); // 'next' | 'prev' | null
+      const [slideSeq, setSlideSeq] = useState(0);
+      const [toastMsg, setToastMsg] = useState(null);
+
+      const [members, setMembers] = useState(() => {
+        const saved = localStorage.getItem('oncall_members_v3');
+        return saved ? JSON.parse(saved) : DEFAULT_MEMBERS;
+      });
+      const [leaves, setLeaves] = useState(() => {
+        const saved = localStorage.getItem('oncall_leaves_v3');
+        return saved ? JSON.parse(saved) : {};
+      });
+      const [oncalls, setOncalls] = useState(() => {
+        const saved = localStorage.getItem('oncall_assign_v3');
+        return saved ? JSON.parse(saved) : {};
+      });
+      const [targetDays, setTargetDays] = useState([1, 2, 3, 4, 5]);
+      const [rules, setRules] = useState({
+        excludePmLeave: true,
+        excludeAmLeave: false,
+        avoidBeforeFullLeave: true,
+        avoidConsecutive: true,
+        avoidSameWeek: true,
+      });
+
+      const [selectedDateKey, setSelectedDateKey] = useState(null);
+      const [formMemberId, setFormMemberId] = useState('m1');
+      const [formLeaveType, setFormLeaveType] = useState('full');
+
+      const swipeStartRef = useRef({ x: null, y: null, swiped: false });
+
+      useEffect(() => { localStorage.setItem('oncall_members_v3', JSON.stringify(members)); }, [members]);
+      useEffect(() => { localStorage.setItem('oncall_leaves_v3', JSON.stringify(leaves)); }, [leaves]);
+      useEffect(() => { localStorage.setItem('oncall_assign_v3', JSON.stringify(oncalls)); }, [oncalls]);
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => {
+          setToastMsg(prev => (prev === msg ? null : prev));
+        }, 2000);
+      };
+
+      // キャッシュを回避して最新バージョンのHTMLを再読み込み（データはlocalStorageに保持）
+      const forceReloadApp = () => {
+        showToast('最新バージョンを確認・再読み込み中...');
+        setTimeout(() => {
+          const baseUrl = window.location.href.split('?')[0];
+          window.location.replace(`${baseUrl}?v=${Date.now()}`);
+        }, 300);
+      };
+
+      const changeMonth = (offset) => {
+        setSlideDirection(offset > 0 ? 'next' : 'prev');
+        setSlideSeq(s => s + 1);
+        setCurrentDate(new Date(year, month + offset, 1));
+      };
+
+      // 日曜始まりのカレンダー配列生成（週インデックス付き）
+      const calendarCells = useMemo(() => {
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startOffset = firstDay.getDay(); // 0(日)〜6(土)
+        const totalDays = lastDay.getDate();
+        const cells = [];
+        for (let i = 0; i < startOffset; i++) cells.push(null);
+        for (let d = 1; d <= totalDays; d++) {
+          const mm = String(month + 1).padStart(2, '0');
+          const dd = String(d).padStart(2, '0');
+          const key = `${year}-${mm}-${dd}`;
+          const dow = new Date(year, month, d).getDay();
+          const weekIndex = Math.floor((startOffset + d - 1) / 7);
+          cells.push({ day: d, key, dow, weekIndex, holiday: HOLIDAYS_JP[key] || null });
+        }
+        while (cells.length % 7 !== 0) cells.push(null);
+        return cells;
+      }, [year, month]);
+
+      // 左右フリック（タッチ＆マウスドラッグ）による月切り替え
+      const handleTouchStart = (e) => {
+        if (e.touches && e.touches.length > 0) {
+          swipeStartRef.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+            swiped: false,
+          };
+        }
+      };
+
+      const handleTouchEnd = (e) => {
+        if (swipeStartRef.current.x === null || !e.changedTouches || e.changedTouches.length === 0) return;
+        const deltaX = e.changedTouches[0].clientX - swipeStartRef.current.x;
+        const deltaY = e.changedTouches[0].clientY - swipeStartRef.current.y;
+
+        if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+          swipeStartRef.current.swiped = true;
+          if (deltaX > 0) {
+            changeMonth(-1);
+          } else {
+            changeMonth(1);
+          }
+        }
+        swipeStartRef.current.x = null;
+        swipeStartRef.current.y = null;
+      };
+
+      const handleMouseDown = (e) => {
+        swipeStartRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          swiped: false,
+        };
+      };
+
+      const handleMouseUp = (e) => {
+        if (swipeStartRef.current.x === null) return;
+        const deltaX = e.clientX - swipeStartRef.current.x;
+        const deltaY = e.clientY - swipeStartRef.current.y;
+
+        if (Math.abs(deltaX) > 55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+          swipeStartRef.current.swiped = true;
+          if (deltaX > 0) {
+            changeMonth(-1);
+          } else {
+            changeMonth(1);
+          }
+        }
+        swipeStartRef.current.x = null;
+        swipeStartRef.current.y = null;
+      };
+
+      const handleDateTap = (cell) => {
+        if (swipeStartRef.current.swiped) {
+          swipeStartRef.current.swiped = false;
+          return;
+        }
+        if (!cell) return;
+        setSelectedDateKey(cell.key);
+        if (members.length > 0 && !formMemberId) setFormMemberId(members[0].id);
+      };
+
+      const saveLeaveAndClose = () => {
+        if (!selectedDateKey || !formMemberId) return;
+        setLeaves(prev => {
+          const dayData = { ...(prev[selectedDateKey] || {}) };
+          if (formLeaveType === 'clear') {
+            delete dayData[formMemberId];
+          } else {
+            dayData[formMemberId] = formLeaveType;
+          }
+          return { ...prev, [selectedDateKey]: dayData };
+        });
+        setSelectedDateKey(null);
+      };
+
+      const removeLeaveEntry = (dateKey, memberId) => {
+        setLeaves(prev => {
+          const dayData = { ...(prev[dateKey] || {}) };
+          delete dayData[memberId];
+          return { ...prev, [dateKey]: dayData };
+        });
+      };
+
+      // 自動割付アルゴリズム
+      const runAutoAssign = () => {
+        const nextOncalls = { ...oncalls };
+        const counts = {};
+        const fridayCounts = {};
+        const weeklyCounts = {};
+        members.forEach(m => {
+          counts[m.id] = 0;
+          fridayCounts[m.id] = 0;
+          weeklyCounts[m.id] = {};
+        });
+
+        const monthDays = calendarCells.filter(Boolean);
+
+        // 固定（ロック）済みのカウント集計
+        monthDays.forEach(c => {
+          const cur = nextOncalls[c.key];
+          if (cur && cur.locked && cur.memberId) {
+            counts[cur.memberId] = (counts[cur.memberId] || 0) + 1;
+            if (c.dow === 5) fridayCounts[cur.memberId] = (fridayCounts[cur.memberId] || 0) + 1;
+            if (!weeklyCounts[cur.memberId]) weeklyCounts[cur.memberId] = {};
+            weeklyCounts[cur.memberId][c.weekIndex] = (weeklyCounts[cur.memberId][c.weekIndex] || 0) + 1;
+          } else {
+            delete nextOncalls[c.key];
+          }
+        });
+
+        monthDays.forEach((cell, idx) => {
+          if (nextOncalls[cell.key]?.locked) return;
+          if (!targetDays.includes(cell.dow) || cell.holiday) return;
+
+          const dayLeaves = leaves[cell.key] || {};
+          const nextCell = monthDays[idx + 1];
+          const nextDayLeaves = nextCell ? (leaves[nextCell.key] || {}) : {};
+          const prevCell = idx > 0 ? monthDays[idx - 1] : null;
+          const prevAssigned = prevCell ? nextOncalls[prevCell.key]?.memberId : null;
+
+          const candidates = members.filter(m => {
+            if (!m.active) return false;
+            if (!(m.workDays || []).includes(cell.dow)) return false;
+            const lType = dayLeaves[m.id];
+            if (lType === 'full' || lType === 'ng') return false;
+            if (rules.excludePmLeave && lType && lType.startsWith('pm')) return false;
+            if (rules.excludeAmLeave && lType && lType.startsWith('am')) return false;
+            return true;
+          });
+
+          if (candidates.length === 0) return;
+
+          const scored = candidates.map(m => {
+            const workDayRatio = Math.max(1, (m.workDays || []).filter(d => targetDays.includes(d)).length) / Math.max(1, targetDays.length);
+            let score = (counts[m.id] / workDayRatio) * 100;
+            if (cell.dow === 5) score += fridayCounts[m.id] * 45;
+            if (rules.avoidConsecutive && prevAssigned === m.id) score += 500;
+            if (rules.avoidSameWeek && (weeklyCounts[m.id]?.[cell.weekIndex] || 0) > 0) {
+              score += weeklyCounts[m.id][cell.weekIndex] * 350;
+            }
+            if (rules.avoidBeforeFullLeave && nextDayLeaves[m.id] === 'full') score += 300;
+            score += Math.random() * 5;
+            return { member: m, score };
+          });
+
+          scored.sort((a, b) => a.score - b.score);
+          const chosen = scored[0].member;
+          nextOncalls[cell.key] = { memberId: chosen.id, locked: false };
+          counts[chosen.id] = (counts[chosen.id] || 0) + 1;
+          if (cell.dow === 5) fridayCounts[chosen.id] = (fridayCounts[chosen.id] || 0) + 1;
+          if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
+          weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
+        });
+
+        setOncalls(nextOncalls);
+        setActiveTab('oncall');
+        showToast(`${month + 1}月のオンコールを割り振りました`);
+      };
+
+      // 月間集計
+      const monthlyStats = useMemo(() => {
+        const stats = {};
+        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0 }; });
+        calendarCells.filter(Boolean).forEach(c => {
+          const oc = oncalls[c.key]?.memberId;
+          if (oc && stats[oc]) {
+            stats[oc].oncall += 1;
+            if (c.dow === 5) stats[oc].fri += 1;
+          }
+          const dl = leaves[c.key] || {};
+          Object.entries(dl).forEach(([mid, type]) => {
+            if (stats[mid] && type !== 'ng') stats[mid].leave += 1;
+          });
+        });
+        return stats;
+      }, [members, calendarCells, oncalls, leaves]);
+
+      const monthAnimClass =
+        slideDirection === 'next'
+          ? 'animate-month-next'
+          : slideDirection === 'prev'
+          ? 'animate-month-prev'
+          : '';
+
+      return (
+        <div className="max-w-md mx-auto min-h-screen flex flex-col bg-slate-50 pb-20 select-none overflow-x-hidden">
+          {/* トースト通知 */}
+          {toastMsg && (
+            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg pointer-events-none">
+              {toastMsg}
+            </div>
+          )}
+
+          {/* 最上部ヘッダー：年月を中央配置、オンコール表示時のみ右端に「割り振り」ボタン */}
+          <header
+            className="bg-white border-b border-slate-200 px-3 py-2.5 sticky top-0 z-20"
+            onTouchStart={activeTab !== 'settings' ? handleTouchStart : undefined}
+            onTouchEnd={activeTab !== 'settings' ? handleTouchEnd : undefined}
+            onMouseDown={activeTab !== 'settings' ? handleMouseDown : undefined}
+            onMouseUp={activeTab !== 'settings' ? handleMouseUp : undefined}
+          >
+            <div className="relative flex items-center justify-center min-h-[36px] overflow-hidden">
+              <div
+                key={`title-${year}-${month}-${slideSeq}`}
+                className={`text-lg font-bold text-slate-800 tracking-wide ${monthAnimClass}`}
+              >
+                {year}年 {month + 1}月
+              </div>
+
+              {activeTab === 'oncall' && (
+                <button
+                  onClick={runAutoAssign}
+                  className="absolute right-0 px-3 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg shadow-sm active:bg-indigo-700 active:scale-95 transition"
+                >
+                  割り振り
+                </button>
+              )}
+            </div>
+          </header>
+
+          {/* メイン領域：カレンダータブ（有給 / オンコール）または ⚙設定タブ */}
+          {activeTab !== 'settings' ? (
+            <main
+              className="p-1.5 flex-1 overflow-hidden"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onMouseDown={handleMouseDown}
+              onMouseUp={handleMouseUp}
+            >
+              <div
+                key={`cal-${year}-${month}-${slideSeq}`}
+                className={monthAnimClass}
+              >
+                <div className="grid grid-cols-7 bg-slate-200 gap-px border border-slate-200 rounded-t-lg overflow-hidden">
+                  {WEEKDAYS.map((w, i) => (
+                    <div key={w} className={`bg-slate-100 text-center py-1 text-[11px] font-bold ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-blue-600' : 'text-slate-700'}`}>
+                      {w}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 bg-slate-200 gap-px border-x border-b border-slate-200 rounded-b-lg overflow-hidden">
+                  {calendarCells.map((cell, idx) => {
+                    if (!cell) return <div key={`empty-${idx}`} className="bg-slate-50/70 min-h-[78px]" />;
+                    const dayLeaves = leaves[cell.key] || {};
+                    const oncallInfo = oncalls[cell.key];
+                    const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
+                    const isSunOrHol = cell.dow === 0 || !!cell.holiday;
+                    const isSat = cell.dow === 6;
+
+                    return (
+                      <div
+                        key={cell.key}
+                        onClick={() => handleDateTap(cell)}
+                        className="bg-white min-h-[78px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden"
+                      >
+                        {/* 日付＋祝日名 */}
+                        <div className="flex items-baseline justify-between px-0.5 leading-none mb-0.5">
+                          <span className={`text-[11px] font-bold ${isSunOrHol ? 'text-rose-600' : isSat ? 'text-blue-600' : 'text-slate-800'}`}>
+                            {cell.day}
+                          </span>
+                          {cell.holiday && (
+                            <span className="text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">
+                              {cell.holiday}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 有給カレンダー表示：名前1行＋背面帯ハイライト */}
+                        {activeTab === 'leave' ? (
+                          <div className="flex flex-col gap-[2px] flex-1">
+                            {Object.entries(dayLeaves).map(([mid, lType]) => {
+                              const mem = members.find(m => m.id === mid);
+                              if (!mem) return null;
+                              const typeObj = LEAVE_TYPES.find(t => t.id === lType);
+                              if (!typeObj) return null;
+
+                              let bandStyle = '';
+                              if (typeObj.band === 'full') bandStyle = 'inset-0';
+                              else if (typeObj.band === 'left-half') bandStyle = 'inset-y-0 left-0 w-1/2';
+                              else if (typeObj.band === 'right-half') bandStyle = 'inset-y-0 right-0 w-1/2';
+                              else if (typeObj.band === 'left-short') bandStyle = 'inset-y-0 left-0 w-[35%]';
+                              else if (typeObj.band === 'right-short') bandStyle = 'inset-y-0 right-0 w-[35%]';
+
+                              const displayText = lType === 'ng' ? `${mem.name}定時` : mem.name;
+
+                              return (
+                                <div key={mid} className="relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-200/60">
+                                  {typeObj.band !== 'none' && (
+                                    <div className={`absolute ${bandStyle} ${typeObj.bg} pointer-events-none`} />
+                                  )}
+                                  <span className="relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
+                                    {displayText}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          /* オンコール担当表表示 */
+                          <div className="flex-1 flex flex-col justify-center items-center">
+                            {oncallMember ? (
+                              <div className={`w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-900 border-indigo-200'}`}>
+                                <div className="text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
+                                  {oncallMember.name}
+                                </div>
+                              </div>
+                            ) : (
+                              targetDays.includes(cell.dow) && !cell.holiday && (
+                                <span className="text-[8.5px] text-slate-300">未割当</span>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </main>
+          ) : (
+            /* ⚙ 設定タブ画面（割り振り設定 ＆ メンバー編集） */
+            <main className="p-3 flex-1 space-y-4 animate-tab-fade">
+              {/* サブタブ切り替え */}
+              <div className="grid grid-cols-2 gap-1 bg-slate-200/80 p-1 rounded-xl">
+                <button
+                  onClick={() => setSettingsSubTab('auto')}
+                  className={`py-2 text-xs font-bold rounded-lg transition ${settingsSubTab === 'auto' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}
+                >
+                  自動割付設定
+                </button>
+                <button
+                  onClick={() => setSettingsSubTab('member')}
+                  className={`py-2 text-xs font-bold rounded-lg transition ${settingsSubTab === 'member' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}
+                >
+                  メンバー編集
+                </button>
+              </div>
+
+              {settingsSubTab === 'auto' ? (
+                <div className="space-y-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                  {/* 1. オンコール対象曜日の選択 */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-700">1. オンコール対象曜日の選択</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => setTargetDays([1, 2, 3, 4, 5])} className="text-[10px] px-2 py-0.5 bg-slate-100 rounded border border-slate-300 font-bold">平日のみ</button>
+                        <button onClick={() => setTargetDays([0, 1, 2, 3, 4, 5, 6])} className="text-[10px] px-2 py-0.5 bg-slate-100 rounded border border-slate-300 font-bold">毎日</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {WEEKDAYS.map((w, dow) => {
+                        const active = targetDays.includes(dow);
+                        return (
+                          <button
+                            key={w}
+                            onClick={() => setTargetDays(prev => prev.includes(dow) ? prev.filter(d => d !== dow) : [...prev, dow])}
+                            className={`py-2 rounded-lg text-xs font-bold border ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-300'}`}
+                          >
+                            {w}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. 担当メンバー選択 ＆ 勤務曜日設定 */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-700">2. 担当メンバー選択 ＆ 勤務曜日設定</div>
+                    <div className="space-y-1.5">
+                      {members.map(m => (
+                        <div key={m.id} className="p-2 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2 font-bold text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={m.active}
+                                onChange={(e) => setMembers(prev => prev.map(x => x.id === m.id ? { ...x, active: e.target.checked } : x))}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                              <span>{m.name}</span>
+                            </label>
+                            <span className="text-[10px] text-slate-500">
+                              {month + 1}月: OC {monthlyStats[m.id]?.oncall || 0}回 (金:{monthlyStats[m.id]?.fri || 0}) / 休:{monthlyStats[m.id]?.leave || 0}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {WEEKDAYS.map((w, dow) => {
+                              const isWork = (m.workDays || []).includes(dow);
+                              return (
+                                <button
+                                  key={w}
+                                  onClick={() => setMembers(prev => prev.map(x => {
+                                    if (x.id !== m.id) return x;
+                                    const wd = x.workDays || [];
+                                    return { ...x, workDays: wd.includes(dow) ? wd.filter(d => d !== dow) : [...wd, dow] };
+                                  }))}
+                                  className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                                >
+                                  {w}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 3. 配慮・除外ルール */}
+                  <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                    <div className="font-bold text-slate-700 mb-1">3. 配慮・除外ルール</div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={rules.excludePmLeave} onChange={e => setRules({ ...rules, excludePmLeave: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <span>午後休・午後時間休のメンバーを除外する</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={rules.excludeAmLeave} onChange={e => setRules({ ...rules, excludeAmLeave: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <span>午前休・午前時間休のメンバーも除外する</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={rules.avoidBeforeFullLeave} onChange={e => setRules({ ...rules, avoidBeforeFullLeave: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <span>全日有休の前日はオンコールを避ける</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={rules.avoidConsecutive} onChange={e => setRules({ ...rules, avoidConsecutive: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <span>連続当番（連直）を回避する</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={rules.avoidSameWeek} onChange={e => setRules({ ...rules, avoidSameWeek: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <span>同じ週内で複数回オンコールは可能な限り避ける</span>
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={runAutoAssign}
+                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm shadow-md active:bg-indigo-700"
+                  >
+                    この条件で {month + 1}月 を自動割付する
+                  </button>
+                </div>
+              ) : (
+                /* メンバー編集サブタブ */
+                <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="text-xs font-bold text-slate-700">メンバー登録・勤務曜日編集</div>
+                  <div className="space-y-2">
+                    {members.map((m, idx) => (
+                      <div key={m.id} className="p-2.5 border border-slate-200 rounded-xl space-y-2 bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}.</span>
+                          <input
+                            type="text"
+                            value={m.name}
+                            onChange={(e) => setMembers(prev => prev.map(x => x.id === m.id ? { ...x, name: e.target.value } : x))}
+                            className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white"
+                          />
+                          <button
+                            onClick={() => setMembers(prev => prev.filter(x => x.id !== m.id))}
+                            className="text-xs text-rose-600 font-bold px-2 py-1 bg-rose-50 rounded-lg"
+                          >
+                            削除
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {WEEKDAYS.map((w, dow) => {
+                            const isWork = (m.workDays || []).includes(dow);
+                            return (
+                              <button
+                                key={w}
+                                onClick={() => setMembers(prev => prev.map(x => {
+                                  if (x.id !== m.id) return x;
+                                  const wd = x.workDays || [];
+                                  return { ...x, workDays: wd.includes(dow) ? wd.filter(d => d !== dow) : [...wd, dow] };
+                                }))}
+                                className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                              >
+                                {w}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setMembers(prev => [...prev, { id: 'm' + Date.now(), name: `メンバー${prev.length + 1}`, active: true, workDays: [1, 2, 3, 4, 5] }])}
+                    className="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 active:bg-slate-200"
+                  >
+                    ＋ メンバー追加
+                  </button>
+                </div>
+              )}
+
+              {/* アプリ更新・再読み込みセクション（再インストール不要で最新版を反映） */}
+              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-700">アプリの更新（再インストール不要）</div>
+                    <div className="text-[10px] text-slate-500">登録データを保持したまま最新プログラムを読み込みます</div>
+                  </div>
+                  <button
+                    onClick={forceReloadApp}
+                    className="px-3 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm active:scale-95 transition whitespace-nowrap"
+                  >
+                    🔄 更新チェック / 再読み込み
+                  </button>
+                </div>
+              </div>
+            </main>
+          )}
+
+          {/* 画面下部：3タブ ボトムナビゲーションバー */}
+          <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 z-30 grid grid-cols-3 px-2 pt-1.5 safe-bottom-nav shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setActiveTab('leave')}
+              className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${activeTab === 'leave' ? 'text-rose-600 bg-rose-50/70 font-bold' : 'text-slate-500 font-medium'}`}
+            >
+              <span className="text-sm leading-none mb-0.5">📅</span>
+              <span className="text-[11px]">有給休暇</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('oncall')}
+              className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${activeTab === 'oncall' ? 'text-indigo-600 bg-indigo-50/70 font-bold' : 'text-slate-500 font-medium'}`}
+            >
+              <span className="text-sm leading-none mb-0.5">📞</span>
+              <span className="text-[11px]">オンコール</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${activeTab === 'settings' ? 'text-slate-900 bg-slate-100 font-bold' : 'text-slate-500 font-medium'}`}
+            >
+              <span className="text-sm leading-none mb-0.5">⚙</span>
+              <span className="text-[11px]">設定</span>
+            </button>
+          </nav>
+
+          {/* 日付タップモーダル：上部＝登録済みフル一覧 / 下部＝新規登録画面 */}
+          {selectedDateKey && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[90vh] overflow-y-auto space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-base">{selectedDateKey} の詳細・登録</h3>
+                  <button onClick={() => setSelectedDateKey(null)} className="text-slate-400 font-bold px-2 py-1">✕</button>
+                </div>
+
+                {/* 上部：登録済み休暇・オンコール内容のフル表示 */}
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
+                  <div className="text-xs font-bold text-slate-600">現在の登録状況</div>
+                  {Object.keys(leaves[selectedDateKey] || {}).length === 0 ? (
+                    <div className="text-xs text-slate-400 py-1">登録されている休暇・NGはありません</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {Object.entries(leaves[selectedDateKey] || {}).map(([mid, lType]) => {
+                        const mem = members.find(m => m.id === mid);
+                        const tObj = LEAVE_TYPES.find(t => t.id === lType);
+                        if (!mem || !tObj) return null;
+                        return (
+                          <div key={mid} className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm">{mem.name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded border font-bold ${tObj.badge}`}>
+                                {tObj.label}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => removeLeaveEntry(selectedDateKey, mid)}
+                              className="text-xs text-rose-600 font-bold px-2 py-0.5 bg-rose-50 rounded"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* オンコール手動変更枠 */}
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-700">オンコール担当:</span>
+                    <select
+                      value={oncalls[selectedDateKey]?.memberId || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOncalls(prev => {
+                          const next = { ...prev };
+                          if (!val) delete next[selectedDateKey];
+                          else next[selectedDateKey] = { memberId: val, locked: true };
+                          return next;
+                        });
+                      }}
+                      className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white font-bold"
+                    >
+                      <option value="">未割当</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 下部：名前選択 → 休暇種別選択 → 登録して戻る */}
+                <div className="space-y-3 pt-1">
+                  <div className="text-xs font-bold text-slate-700">1. メンバーを選択</div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {members.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setFormMemberId(m.id)}
+                        className={`py-2 px-1 rounded-lg text-xs font-bold border transition ${formMemberId === m.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'}`}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="text-xs font-bold text-slate-700">2. 休暇・NG種別を選択</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {LEAVE_TYPES.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setFormLeaveType(t.id)}
+                        className={`py-2 px-2 rounded-lg text-xs font-bold border text-left transition ${formLeaveType === t.id ? 'ring-2 ring-indigo-600 bg-indigo-50 border-indigo-600 text-indigo-900' : 'bg-white border-slate-300 text-slate-700'}`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={saveLeaveAndClose}
+                    className="w-full py-3 bg-rose-600 text-white font-bold rounded-xl text-sm shadow-md active:scale-[0.99]"
+                  >
+                    登録してカレンダーに戻る
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
