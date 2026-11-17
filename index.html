@@ -406,7 +406,7 @@
         showToast(`${month + 1}月のオンコールを自動割付しました`);
       };
 
-      // 外来担当自動割付（有給・午前/午後休の完全除外、曜日の偏り防止、同一週の複数回回避）
+      // 外来担当自動割付（午前・午後は同一人物が通しで担当、有給・半休と非干渉、曜日偏り＆同一週複数回を回避）
       const runOutpatientAutoAssign = () => {
         const nextOp = { ...outpatients };
         const totalCounts = {};
@@ -421,19 +421,23 @@
 
         const monthDays = calendarCells.filter(Boolean);
 
-        // 固定済み(locked)の集計と未固定枠のクリア
+        // 固定済み(locked)の集計（同日午前・午後が同じ人なら週カウント・曜日カウントは1日分として集計）
         monthDays.forEach(c => {
           const cur = nextOp[c.key] || {};
           const nextDayObj = {};
+          const lockedMids = new Set();
           ['am', 'pm'].forEach(slot => {
             if (cur[slot]?.locked && cur[slot]?.memberId) {
               const mid = cur[slot].memberId;
               nextDayObj[slot] = cur[slot];
               totalCounts[mid] = (totalCounts[mid] || 0) + 1;
-              if (dowCounts[mid]) dowCounts[mid][c.dow] = (dowCounts[mid][c.dow] || 0) + 1;
-              if (!weeklyCounts[mid]) weeklyCounts[mid] = {};
-              weeklyCounts[mid][c.weekIndex] = (weeklyCounts[mid][c.weekIndex] || 0) + 1;
+              lockedMids.add(mid);
             }
+          });
+          lockedMids.forEach(mid => {
+            if (dowCounts[mid]) dowCounts[mid][c.dow] = (dowCounts[mid][c.dow] || 0) + 1;
+            if (!weeklyCounts[mid]) weeklyCounts[mid] = {};
+            weeklyCounts[mid][c.weekIndex] = (weeklyCounts[mid][c.weekIndex] || 0) + 1;
           });
           if (Object.keys(nextDayObj).length > 0) nextOp[c.key] = nextDayObj;
           else delete nextOp[c.key];
@@ -446,57 +450,79 @@
           const dayLeaves = leaves[cell.key] || {};
           const curDayOp = { ...(nextOp[cell.key] || {}) };
 
-          ['am', 'pm'].forEach(slot => {
-            if (curDayOp[slot]?.locked) return;
-            const slotEnabled = (outpatientSlots[slot] || []).includes(cell.dow);
-            if (!slotEnabled) return;
+          const amEnabled = (outpatientSlots.am || []).includes(cell.dow);
+          const pmEnabled = (outpatientSlots.pm || []).includes(cell.dow);
+          const needAm = amEnabled && !curDayOp.am?.locked;
+          const needPm = pmEnabled && !curDayOp.pm?.locked;
 
-            const candidates = members.filter(m => {
-              if (!m.outpatientActive) return false;
-              if (!(m.outpatientDays || []).includes(cell.dow)) return false;
-              const lType = dayLeaves[m.id];
-              // 全日有休は終日除外、午前休は午前外来から除外、午後休は午後外来から除外
-              if (lType === 'full') return false;
-              if (slot === 'am' && lType && lType.startsWith('am')) return false;
-              if (slot === 'pm' && lType && lType.startsWith('pm')) return false;
-              return true;
-            });
+          if (!needAm && !needPm) return;
 
-            if (candidates.length === 0) return;
+          // 片方が手動固定されている場合は、もう片方も同じ人（休暇と干渉しない場合）を最優先で割り当てる
+          const lockedMid = curDayOp.am?.locked ? curDayOp.am.memberId : (curDayOp.pm?.locked ? curDayOp.pm.memberId : null);
+          if (lockedMid) {
+            const lType = dayLeaves[lockedMid];
+            const canDoAm = !needAm || (lType !== 'full' && !(lType && lType.startsWith('am')));
+            const canDoPm = !needPm || (lType !== 'full' && !(lType && lType.startsWith('pm')));
+            if (canDoAm && canDoPm) {
+              if (needAm) {
+                curDayOp.am = { memberId: lockedMid, locked: false };
+                totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1;
+              }
+              if (needPm) {
+                curDayOp.pm = { memberId: lockedMid, locked: false };
+                totalCounts[lockedMid] = (totalCounts[lockedMid] || 0) + 1;
+              }
+              nextOp[cell.key] = curDayOp;
+              return;
+            }
+          }
 
-            const otherSlot = slot === 'am' ? 'pm' : 'am';
-            const sameDayOtherMid = curDayOp[otherSlot]?.memberId;
-
-            const scored = candidates.map(m => {
-              // 担当可能枠数に応じた公平な回数比率
-              const availSlots = MON_FRI.reduce((acc, d) => {
-                if (!(m.outpatientDays || []).includes(d)) return acc;
-                return acc + ((outpatientSlots.am || []).includes(d) ? 1 : 0) + ((outpatientSlots.pm || []).includes(d) ? 1 : 0);
-              }, 0);
-              const ratio = Math.max(1, availSlots) / Math.max(1, activeSlotsCount);
-
-              let score = (totalCounts[m.id] / ratio) * 110;
-              // 同じ週での複数回担当を極力なくす（高ペナルティ）
-              const sameWeek = weeklyCounts[m.id]?.[cell.weekIndex] || 0;
-              if (sameWeek > 0) score += sameWeek * 1200;
-              // 同日の午前・午後連続担当を極力避ける
-              if (sameDayOtherMid === m.id) score += 2500;
-              // 曜日の偏りを防ぐ（同じ曜日の担当回数に応じてペナルティ加算）
-              const sameDow = dowCounts[m.id]?.[cell.dow] || 0;
-              score += sameDow * 360;
-
-              score += Math.random() * 5;
-              return { member: m, score };
-            });
-
-            scored.sort((a, b) => a.score - b.score);
-            const chosen = scored[0].member;
-            curDayOp[slot] = { memberId: chosen.id, locked: false };
-            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
-            if (dowCounts[chosen.id]) dowCounts[chosen.id][cell.dow] = (dowCounts[chosen.id][cell.dow] || 0) + 1;
-            if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
-            weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
+          // 当日の必要枠（午前のみ / 午後のみ / 午前・午後両方）をすべて満たせる候補者を抽出
+          const candidates = members.filter(m => {
+            if (!m.outpatientActive) return false;
+            if (!(m.outpatientDays || []).includes(cell.dow)) return false;
+            const lType = dayLeaves[m.id];
+            if (lType === 'full') return false;
+            if (needAm && lType && lType.startsWith('am')) return false;
+            if (needPm && lType && lType.startsWith('pm')) return false;
+            return true;
           });
+
+          if (candidates.length === 0) return;
+
+          const scored = candidates.map(m => {
+            const availSlots = MON_FRI.reduce((acc, d) => {
+              if (!(m.outpatientDays || []).includes(d)) return acc;
+              return acc + ((outpatientSlots.am || []).includes(d) ? 1 : 0) + ((outpatientSlots.pm || []).includes(d) ? 1 : 0);
+            }, 0);
+            const ratio = Math.max(1, availSlots) / Math.max(1, activeSlotsCount);
+
+            let score = (totalCounts[m.id] / ratio) * 110;
+            // 同じ週での複数日担当を極力なくす
+            const sameWeek = weeklyCounts[m.id]?.[cell.weekIndex] || 0;
+            if (sameWeek > 0) score += sameWeek * 1200;
+            // 曜日の偏りを防ぐ
+            const sameDow = dowCounts[m.id]?.[cell.dow] || 0;
+            score += sameDow * 360;
+
+            score += Math.random() * 5;
+            return { member: m, score };
+          });
+
+          scored.sort((a, b) => a.score - b.score);
+          const chosen = scored[0].member;
+
+          if (needAm) {
+            curDayOp.am = { memberId: chosen.id, locked: false };
+            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
+          }
+          if (needPm) {
+            curDayOp.pm = { memberId: chosen.id, locked: false };
+            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
+          }
+          if (dowCounts[chosen.id]) dowCounts[chosen.id][cell.dow] = (dowCounts[chosen.id][cell.dow] || 0) + 1;
+          if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
+          weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
 
           if (Object.keys(curDayOp).length > 0) nextOp[cell.key] = curDayOp;
         });
@@ -505,6 +531,7 @@
         setActiveTab('outpatient');
         showToast(`${month + 1}月の外来担当を自動割付しました`);
       };
+
 
       const saveCustomFirebaseConfig = () => {
         const parsed = parseFirebaseConfigInput(customConfigText);
@@ -830,7 +857,8 @@
                     <ul className="list-disc list-inside text-[10px] text-emerald-800 space-y-0.5">
                       <li>全休は終日、午前休・時間休は午前、午後休・時間休は午後から自動除外</li>
                       <li>特定の曜日に偏らないよう均等化</li>
-                      <li>同じ週での複数回担当・同日の午前午後重複を極力回避</li>
+                      <li>同日の午前・午後は同一メンバーが通しで担当し、同じ週での複数日担当を極力回避</li>
+
                     </ul>
                   </div>
 
