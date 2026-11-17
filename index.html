@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>有給＆オンコール管理</title>
+  <title>有給・オンコール・外来管理</title>
   <meta name="theme-color" content="#4f46e5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="有給＆OC" />
+  <meta name="apple-mobile-web-app-title" content="有給＆当番" />
   <meta name="mobile-web-app-capable" content="yes" />
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -22,8 +22,8 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
     @keyframes slideFromRight { 0% { transform: translateX(48px); opacity: 0.25; } 100% { transform: translateX(0); opacity: 1; } }
     @keyframes slideFromLeft { 0% { transform: translateX(-48px); opacity: 0.25; } 100% { transform: translateX(0); opacity: 1; } }
-    .anim-slide-next { animation: slideFromRight 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-    .anim-slide-prev { animation: slideFromLeft 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    .anim-slide-next { animation: slideFromRight 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    .anim-slide-prev { animation: slideFromLeft 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -38,14 +38,14 @@
         ctx.fillStyle = '#4f46e5';
         ctx.beginPath(); ctx.roundRect(0, 0, 192, 192, 42); ctx.fill();
         ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = 'bold 54px sans-serif'; ctx.fillText('有給', 96, 70);
-        ctx.font = 'bold 44px sans-serif'; ctx.fillText('＆OC', 96, 132);
+        ctx.font = 'bold 50px sans-serif'; ctx.fillText('有給', 96, 66);
+        ctx.font = 'bold 38px sans-serif'; ctx.fillText('OC・外来', 96, 130);
         const iconUrl = canvas.toDataURL('image/png');
         const appleIcon = document.createElement('link');
         appleIcon.rel = 'apple-touch-icon'; appleIcon.href = iconUrl;
         document.head.appendChild(appleIcon);
         const manifest = {
-          name: '有給＆オンコール管理', short_name: '有給＆OC', start_url: './', display: 'standalone',
+          name: '有給・オンコール・外来管理', short_name: '有給＆当番', start_url: './', display: 'standalone',
           background_color: '#f8fafc', theme_color: '#4f46e5',
           icons: [{ src: iconUrl, sizes: '192x192', type: 'image/png' }]
         };
@@ -71,23 +71,26 @@
     };
 
     const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+    const MON_FRI = [1, 2, 3, 4, 5];
 
     const DEFAULT_MEMBERS = [
-      { id: 'm1', name: '佐藤', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm2', name: '鈴木', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm3', name: '高橋', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm4', name: '田中', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm5', name: '伊藤', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm6', name: '渡辺', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm7', name: '山本', active: true, workDays: [1, 2, 3, 4, 5] },
-      { id: 'm8', name: '中村', active: true, workDays: [1, 2, 3, 4, 5] },
+      { id: 'm1', name: '佐藤', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm2', name: '鈴木', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm3', name: '高橋', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm4', name: '田中', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm5', name: '伊藤', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm6', name: '渡辺', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm7', name: '山本', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
+      { id: 'm8', name: '中村', active: true, workDays: [1, 2, 3, 4, 5], outpatientActive: true, outpatientDays: [1, 2, 3, 4, 5] },
     ];
+
+    const DEFAULT_OUTPATIENT_SLOTS = { am: [1, 2, 3, 4, 5], pm: [1, 2, 3, 4, 5] };
 
     const RULE_DEFINITIONS = {
       excludePmLeave: { id: 'excludePmLeave', label: '午後休・午後時間休のメンバーを除外する', desc: '午後不在のためオンコール対象から外します' },
       avoidBeforeFullLeave: { id: 'avoidBeforeFullLeave', label: '全日有休の前日はオンコールを避ける', desc: '翌日全休のメンバーへの割付を回避します' },
-      avoidSameWeekMultiple: { id: 'avoidSameWeekMultiple', label: '同じ週内で複数回オンコールは可能な限り避ける', desc: '同一週（日曜〜土曜）での複数回担当を抑えます' },
-      excludeAmLeave: { id: 'excludeAmLeave', label: '午前休・午前時間休のメンバーも除外する', desc: '午前不在のメンバーもオンコール対象から外します' }
+      avoidSameWeekMultiple: { id: 'avoidSameWeekMultiple', label: '同じ週内で複数回オンコールは可能な限り避ける', desc: '同一週での複数回担当を抑えます' },
+      excludeAmLeave: { id: 'excludeAmLeave', label: '午前休・午前時間休のメンバーも除外する', desc: '午前不在のメンバーも対象から外します' }
     };
 
     const DEFAULT_RULE_ORDER = ['excludePmLeave', 'avoidBeforeFullLeave', 'avoidSameWeekMultiple', 'excludeAmLeave'];
@@ -123,6 +126,16 @@
       '2028-09-22': '秋分の日', '2028-10-09': 'スポーツの日', '2028-11-03': '文化の日', '2028-11-23': '勤労感謝の日'
     };
 
+    function normalizeMembers(list) {
+      if (!Array.isArray(list)) return DEFAULT_MEMBERS;
+      return list.map(m => ({
+        ...m,
+        workDays: Array.isArray(m.workDays) ? m.workDays : [1, 2, 3, 4, 5],
+        outpatientActive: m.outpatientActive !== undefined ? m.outpatientActive : true,
+        outpatientDays: Array.isArray(m.outpatientDays) ? m.outpatientDays : [1, 2, 3, 4, 5]
+      }));
+    }
+
     function normalizeRules(raw) {
       const merged = { ...DEFAULT_RULES, ...(raw || {}) };
       delete merged.avoidConsecutive;
@@ -143,20 +156,26 @@
     }
 
     function App() {
-      const [activeTab, setActiveTab] = useState('leave');
-      const [settingsSubTab, setSettingsSubTab] = useState('auto');
+      const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'oncall' | 'outpatient' | 'settings'
+      const [settingsSubTab, setSettingsSubTab] = useState('auto'); // 'auto' | 'outpatient' | 'member' | 'cloud'
       const [currentDate, setCurrentDate] = useState(new Date(2026, 10, 1));
       const [slideAnim, setSlideAnim] = useState({ dir: '', seq: 0 });
       const [toastMsg, setToastMsg] = useState(null);
 
       const [members, setMembers] = useState(() => {
-        const s = localStorage.getItem('oncall_members_v3'); return s ? JSON.parse(s) : DEFAULT_MEMBERS;
+        const s = localStorage.getItem('oncall_members_v3'); return s ? normalizeMembers(JSON.parse(s)) : DEFAULT_MEMBERS;
       });
       const [leaves, setLeaves] = useState(() => {
         const s = localStorage.getItem('oncall_leaves_v3'); return s ? JSON.parse(s) : {};
       });
       const [oncalls, setOncalls] = useState(() => {
         const s = localStorage.getItem('oncall_assign_v3'); return s ? JSON.parse(s) : {};
+      });
+      const [outpatients, setOutpatients] = useState(() => {
+        const s = localStorage.getItem('oncall_outpatients_v3'); return s ? JSON.parse(s) : {};
+      });
+      const [outpatientSlots, setOutpatientSlots] = useState(() => {
+        const s = localStorage.getItem('oncall_outpatient_slots_v3'); return s ? JSON.parse(s) : DEFAULT_OUTPATIENT_SLOTS;
       });
       const [targetDays, setTargetDays] = useState(() => {
         const s = localStorage.getItem('oncall_target_days_v3'); return s ? JSON.parse(s) : [1, 2, 3, 4, 5];
@@ -181,6 +200,8 @@
       useEffect(() => { localStorage.setItem('oncall_members_v3', JSON.stringify(members)); }, [members]);
       useEffect(() => { localStorage.setItem('oncall_leaves_v3', JSON.stringify(leaves)); }, [leaves]);
       useEffect(() => { localStorage.setItem('oncall_assign_v3', JSON.stringify(oncalls)); }, [oncalls]);
+      useEffect(() => { localStorage.setItem('oncall_outpatients_v3', JSON.stringify(outpatients)); }, [outpatients]);
+      useEffect(() => { localStorage.setItem('oncall_outpatient_slots_v3', JSON.stringify(outpatientSlots)); }, [outpatientSlots]);
       useEffect(() => { localStorage.setItem('oncall_target_days_v3', JSON.stringify(targetDays)); }, [targetDays]);
       useEffect(() => { localStorage.setItem('oncall_rules_v3', JSON.stringify(rules)); }, [rules]);
 
@@ -209,13 +230,15 @@
                   setSyncStatus('connected'); setSyncErrorDetail('');
                   if (snapshot.exists) {
                     const data = snapshot.data();
-                    if (data.members) setMembers(data.members);
+                    if (data.members) setMembers(normalizeMembers(data.members));
                     if (data.leaves) setLeaves(data.leaves);
                     if (data.oncalls) setOncalls(data.oncalls);
+                    if (data.outpatients) setOutpatients(data.outpatients);
+                    if (data.outpatientSlots) setOutpatientSlots(data.outpatientSlots);
                     if (data.targetDays) setTargetDays(data.targetDays);
                     if (data.rules) setRules(prev => normalizeRules({ ...prev, ...data.rules }));
                   } else {
-                    sharedDocRef.set({ members, leaves, oncalls, targetDays, rules, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+                    sharedDocRef.set({ members, leaves, oncalls, outpatients, outpatientSlots, targetDays, rules, updatedAt: Date.now() }, { merge: true }).catch(() => {});
                   }
                 },
                 (err) => { setSyncStatus('error'); setSyncErrorDetail(err.message || '同期エラー'); }
@@ -231,9 +254,11 @@
         if (docRefHolder.current) docRefHolder.current.set({ ...patch, updatedAt: Date.now() }, { merge: true }).catch(() => {});
       };
 
-      const updateMembers = (fn) => setMembers(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ members: n }); return n; });
+      const updateMembers = (fn) => setMembers(p => { const n = normalizeMembers(typeof fn === 'function' ? fn(p) : fn); pushToCloud({ members: n }); return n; });
       const updateLeaves = (fn) => setLeaves(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ leaves: n }); return n; });
       const updateOncalls = (fn) => setOncalls(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ oncalls: n }); return n; });
+      const updateOutpatients = (fn) => setOutpatients(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ outpatients: n }); return n; });
+      const updateOutpatientSlots = (fn) => setOutpatientSlots(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ outpatientSlots: n }); return n; });
       const updateTargetDays = (fn) => setTargetDays(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ targetDays: n }); return n; });
       const updateRules = (fn) => setRules(p => { const n = normalizeRules(typeof fn === 'function' ? fn(p) : fn); pushToCloud({ rules: n }); return n; });
 
@@ -304,6 +329,7 @@
         });
       };
 
+      // オンコール自動割付
       const runAutoAssign = () => {
         const nextOncalls = { ...oncalls };
         const counts = {}, fridayCounts = {}, weeklyCounts = {};
@@ -380,6 +406,106 @@
         showToast(`${month + 1}月のオンコールを自動割付しました`);
       };
 
+      // 外来担当自動割付（有給・午前/午後休の完全除外、曜日の偏り防止、同一週の複数回回避）
+      const runOutpatientAutoAssign = () => {
+        const nextOp = { ...outpatients };
+        const totalCounts = {};
+        const dowCounts = {};
+        const weeklyCounts = {};
+
+        members.forEach(m => {
+          totalCounts[m.id] = 0;
+          dowCounts[m.id] = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          weeklyCounts[m.id] = {};
+        });
+
+        const monthDays = calendarCells.filter(Boolean);
+
+        // 固定済み(locked)の集計と未固定枠のクリア
+        monthDays.forEach(c => {
+          const cur = nextOp[c.key] || {};
+          const nextDayObj = {};
+          ['am', 'pm'].forEach(slot => {
+            if (cur[slot]?.locked && cur[slot]?.memberId) {
+              const mid = cur[slot].memberId;
+              nextDayObj[slot] = cur[slot];
+              totalCounts[mid] = (totalCounts[mid] || 0) + 1;
+              if (dowCounts[mid]) dowCounts[mid][c.dow] = (dowCounts[mid][c.dow] || 0) + 1;
+              if (!weeklyCounts[mid]) weeklyCounts[mid] = {};
+              weeklyCounts[mid][c.weekIndex] = (weeklyCounts[mid][c.weekIndex] || 0) + 1;
+            }
+          });
+          if (Object.keys(nextDayObj).length > 0) nextOp[c.key] = nextDayObj;
+          else delete nextOp[c.key];
+        });
+
+        const activeSlotsCount = (outpatientSlots.am?.length || 0) + (outpatientSlots.pm?.length || 0);
+
+        monthDays.forEach(cell => {
+          if (!MON_FRI.includes(cell.dow) || cell.holiday) return;
+          const dayLeaves = leaves[cell.key] || {};
+          const curDayOp = { ...(nextOp[cell.key] || {}) };
+
+          ['am', 'pm'].forEach(slot => {
+            if (curDayOp[slot]?.locked) return;
+            const slotEnabled = (outpatientSlots[slot] || []).includes(cell.dow);
+            if (!slotEnabled) return;
+
+            const candidates = members.filter(m => {
+              if (!m.outpatientActive) return false;
+              if (!(m.outpatientDays || []).includes(cell.dow)) return false;
+              const lType = dayLeaves[m.id];
+              // 全日有休は終日除外、午前休は午前外来から除外、午後休は午後外来から除外
+              if (lType === 'full') return false;
+              if (slot === 'am' && lType && lType.startsWith('am')) return false;
+              if (slot === 'pm' && lType && lType.startsWith('pm')) return false;
+              return true;
+            });
+
+            if (candidates.length === 0) return;
+
+            const otherSlot = slot === 'am' ? 'pm' : 'am';
+            const sameDayOtherMid = curDayOp[otherSlot]?.memberId;
+
+            const scored = candidates.map(m => {
+              // 担当可能枠数に応じた公平な回数比率
+              const availSlots = MON_FRI.reduce((acc, d) => {
+                if (!(m.outpatientDays || []).includes(d)) return acc;
+                return acc + ((outpatientSlots.am || []).includes(d) ? 1 : 0) + ((outpatientSlots.pm || []).includes(d) ? 1 : 0);
+              }, 0);
+              const ratio = Math.max(1, availSlots) / Math.max(1, activeSlotsCount);
+
+              let score = (totalCounts[m.id] / ratio) * 110;
+              // 同じ週での複数回担当を極力なくす（高ペナルティ）
+              const sameWeek = weeklyCounts[m.id]?.[cell.weekIndex] || 0;
+              if (sameWeek > 0) score += sameWeek * 1200;
+              // 同日の午前・午後連続担当を極力避ける
+              if (sameDayOtherMid === m.id) score += 2500;
+              // 曜日の偏りを防ぐ（同じ曜日の担当回数に応じてペナルティ加算）
+              const sameDow = dowCounts[m.id]?.[cell.dow] || 0;
+              score += sameDow * 360;
+
+              score += Math.random() * 5;
+              return { member: m, score };
+            });
+
+            scored.sort((a, b) => a.score - b.score);
+            const chosen = scored[0].member;
+            curDayOp[slot] = { memberId: chosen.id, locked: false };
+            totalCounts[chosen.id] = (totalCounts[chosen.id] || 0) + 1;
+            if (dowCounts[chosen.id]) dowCounts[chosen.id][cell.dow] = (dowCounts[chosen.id][cell.dow] || 0) + 1;
+            if (!weeklyCounts[chosen.id]) weeklyCounts[chosen.id] = {};
+            weeklyCounts[chosen.id][cell.weekIndex] = (weeklyCounts[chosen.id][cell.weekIndex] || 0) + 1;
+          });
+
+          if (Object.keys(curDayOp).length > 0) nextOp[cell.key] = curDayOp;
+        });
+
+        updateOutpatients(nextOp);
+        setActiveTab('outpatient');
+        showToast(`${month + 1}月の外来担当を自動割付しました`);
+      };
+
       const saveCustomFirebaseConfig = () => {
         const parsed = parseFirebaseConfigInput(customConfigText);
         if (!parsed || !parsed.apiKey || !parsed.projectId) { showToast('設定形式が正しくありません'); return; }
@@ -397,16 +523,19 @@
 
       const monthlyStats = useMemo(() => {
         const stats = {};
-        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0 }; });
+        members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, leave: 0, op: 0 }; });
         calendarCells.filter(Boolean).forEach(c => {
           const oc = oncalls[c.key]?.memberId;
           if (oc && stats[oc]) { stats[oc].oncall += 1; if (c.dow === 5) stats[oc].fri += 1; }
+          const opDay = outpatients[c.key] || {};
+          if (opDay.am?.memberId && stats[opDay.am.memberId]) stats[opDay.am.memberId].op += 1;
+          if (opDay.pm?.memberId && stats[opDay.pm.memberId]) stats[opDay.pm.memberId].op += 1;
           Object.entries(leaves[c.key] || {}).forEach(([mid, type]) => {
             if (stats[mid] && type !== 'ng') stats[mid].leave += 1;
           });
         });
         return stats;
-      }, [members, calendarCells, oncalls, leaves]);
+      }, [members, calendarCells, oncalls, outpatients, leaves]);
 
       const slideClass = slideAnim.dir === 'next' ? 'anim-slide-next' : slideAnim.dir === 'prev' ? 'anim-slide-prev' : '';
       const orderedRuleKeys = rules.ruleOrder || DEFAULT_RULE_ORDER;
@@ -450,7 +579,12 @@
                   </div>
                   {activeTab === 'oncall' && (
                     <div className="absolute right-0 flex items-center">
-                      <button onClick={runAutoAssign} className="px-3 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 transition">割り振り</button>
+                      <button onClick={runAutoAssign} className="px-2.5 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 transition">OC割振</button>
+                    </div>
+                  )}
+                  {activeTab === 'outpatient' && (
+                    <div className="absolute right-0 flex items-center">
+                      <button onClick={runOutpatientAutoAssign} className="px-2.5 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-lg shadow-sm active:scale-95 transition">外来割振</button>
                     </div>
                   )}
                 </>
@@ -474,6 +608,9 @@
                   const dayLeaves = leaves[cell.key] || {};
                   const oncallInfo = oncalls[cell.key];
                   const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
+                  const opInfo = outpatients[cell.key] || {};
+                  const opAmMember = members.find(m => m.id === opInfo.am?.memberId);
+                  const opPmMember = members.find(m => m.id === opInfo.pm?.memberId);
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
 
                   return (
@@ -483,7 +620,7 @@
                         {cell.holiday && <span className="text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">{cell.holiday}</span>}
                       </div>
 
-                      {activeTab === 'leave' ? (
+                      {activeTab === 'leave' && (
                         <div className="flex flex-col gap-[2px] flex-1">
                           {Object.entries(dayLeaves).map(([mid, lType]) => {
                             const mem = members.find(m => m.id === mid);
@@ -500,7 +637,9 @@
                             );
                           })}
                         </div>
-                      ) : (
+                      )}
+
+                      {activeTab === 'oncall' && (
                         <div className="flex-1 flex flex-col justify-center items-center">
                           {oncallMember ? (
                             <div className={`w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-900 border-indigo-200'}`}>
@@ -511,6 +650,27 @@
                           )}
                         </div>
                       )}
+
+                      {activeTab === 'outpatient' && (
+                        <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
+                          {MON_FRI.includes(cell.dow) && !cell.holiday && (
+                            <>
+                              {(outpatientSlots.am || []).includes(cell.dow) && (
+                                <div className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${opAmMember ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-900 border-emerald-200') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                  <span className="text-[7.5px] font-bold opacity-75">前</span>
+                                  <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">{opAmMember ? opAmMember.name : '未'}</span>
+                                </div>
+                              )}
+                              {(outpatientSlots.pm || []).includes(cell.dow) && (
+                                <div className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${opPmMember ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-900 border-teal-200') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                  <span className="text-[7.5px] font-bold opacity-75">後</span>
+                                  <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">{opPmMember ? opPmMember.name : '未'}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -518,8 +678,8 @@
             </main>
           ) : (
             <main className="p-3 flex-1 space-y-4">
-              <div className="grid grid-cols-3 gap-1 bg-slate-200/80 p-1 rounded-xl">
-                {[['auto', '自動割付設定'], ['member', 'メンバー編集'], ['cloud', '☁ クラウド同期']].map(([k, label]) => (
+              <div className="grid grid-cols-4 gap-1 bg-slate-200/80 p-1 rounded-xl">
+                {[['auto', 'OC割付'], ['outpatient', '外来割付'], ['member', 'メンバー'], ['cloud', '☁ 同期']].map(([k, label]) => (
                   <button key={k} onClick={() => setSettingsSubTab(k)} className={`py-2 text-[11px] font-bold rounded-lg transition ${settingsSubTab === k ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600'}`}>{label}</button>
                 ))}
               </div>
@@ -542,7 +702,7 @@
                   </div>
 
                   <div className="space-y-2">
-                    <div className="text-xs font-bold text-slate-700">2. 担当メンバー ＆ 勤務曜日設定 ({month + 1}月集計)</div>
+                    <div className="text-xs font-bold text-slate-700">2. オンコール担当 ＆ 勤務曜日設定 ({month + 1}月集計)</div>
                     <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
                       {members.map(m => (
                         <div key={m.id} className="p-2 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-1.5">
@@ -557,7 +717,7 @@
                             {WEEKDAYS.map((w, dow) => {
                               const isWork = (m.workDays || []).includes(dow);
                               return (
-                                <button key={w} onClick={() => updateMembers(p => p.map(x => x.id !== m.id ? x : { ...x, workDays: (x.workDays || []).includes(dow) ? x.workDays.filter(d => d !== dow) : [...(x.workDays || []), dow] }))} className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}>{w}</button>
+                                <button key={w} onClick={() => updateMembers(p => p.map(x => x.id !== m.id ? x : { ...x, workDays: (x.workDays || []).includes(dow) ? x.workDays.filter(d => d !== dow) : [...(x.workDays || []), dow] }))} className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200'}`}>{w}</button>
                               );
                             })}
                           </div>
@@ -599,34 +759,100 @@
                   </div>
 
                   <button onClick={runAutoAssign} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm shadow-md active:scale-[0.99]">
-                    この条件で {year}年{month + 1}月 を自動割付する
+                    この条件で {year}年{month + 1}月 のオンコールを自動割付
+                  </button>
+                </div>
+              )}
+
+              {settingsSubTab === 'outpatient' && (
+                <div className="space-y-4 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-slate-700">1. 外来実施枠の選択（月〜金の午前・午後）</span>
+                    <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      {[['am', '午前外来', 'bg-emerald-600 border-emerald-600'], ['pm', '午後外来', 'bg-teal-600 border-teal-600']].map(([slotKey, label, activeCls]) => (
+                        <div key={slotKey} className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-700 w-16 shrink-0">{label}</span>
+                          <div className="grid grid-cols-5 gap-1 flex-1">
+                            {MON_FRI.map(dow => {
+                              const active = (outpatientSlots[slotKey] || []).includes(dow);
+                              return (
+                                <button
+                                  key={dow}
+                                  onClick={() => updateOutpatientSlots(p => {
+                                    const cur = p[slotKey] || [];
+                                    return { ...p, [slotKey]: cur.includes(dow) ? cur.filter(d => d !== dow) : [...cur, dow] };
+                                  })}
+                                  className={`py-1.5 rounded-lg text-xs font-bold border ${active ? `${activeCls} text-white` : 'bg-white text-slate-400 border-slate-300'}`}
+                                >
+                                  {WEEKDAYS[dow]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-700">2. 各人員の外来担当可能曜日（オンコールとは独立設定）</div>
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                      {members.map(m => (
+                        <div key={m.id} className="p-2 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2 font-bold text-xs cursor-pointer">
+                              <input type="checkbox" checked={m.outpatientActive !== false} onChange={e => updateMembers(p => p.map(x => x.id === m.id ? { ...x, outpatientActive: e.target.checked } : x))} className="w-4 h-4 accent-emerald-600" />
+                              <span>{m.name}</span>
+                            </label>
+                            <span className="text-[10px] text-slate-500">今月外来: {monthlyStats[m.id]?.op || 0}コマ</span>
+                          </div>
+                          <div className="grid grid-cols-5 gap-1">
+                            {MON_FRI.map(dow => {
+                              const isOpDay = (m.outpatientDays || []).includes(dow);
+                              return (
+                                <button
+                                  key={dow}
+                                  onClick={() => updateMembers(p => p.map(x => x.id !== m.id ? x : { ...x, outpatientDays: (x.outpatientDays || []).includes(dow) ? x.outpatientDays.filter(d => d !== dow) : [...(x.outpatientDays || []), dow] }))}
+                                  className={`py-1 rounded text-[10px] font-bold border ${isOpDay ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                                >
+                                  {WEEKDAYS[dow]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
+                    <div className="font-bold">🩺 外来自動振り分けルール</div>
+                    <ul className="list-disc list-inside text-[10px] text-emerald-800 space-y-0.5">
+                      <li>全休は終日、午前休・時間休は午前、午後休・時間休は午後から自動除外</li>
+                      <li>特定の曜日に偏らないよう均等化</li>
+                      <li>同じ週での複数回担当・同日の午前午後重複を極力回避</li>
+                    </ul>
+                  </div>
+
+                  <button onClick={runOutpatientAutoAssign} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm shadow-md active:scale-[0.99]">
+                    この条件で {year}年{month + 1}月 の外来を自動割付
                   </button>
                 </div>
               )}
 
               {settingsSubTab === 'member' && (
                 <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="text-xs font-bold text-slate-700">メンバー登録・勤務曜日編集</div>
+                  <div className="text-xs font-bold text-slate-700">メンバー登録・名前編集</div>
                   <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                     {members.map((m, idx) => (
-                      <div key={m.id} className="p-2.5 border border-slate-200 rounded-xl space-y-2 bg-slate-50">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}.</span>
-                          <input type="text" value={m.name} onChange={e => updateMembers(p => p.map(x => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
-                          <button onClick={() => updateMembers(p => p.filter(x => x.id !== m.id))} className="text-xs text-rose-600 font-bold px-2.5 py-1 bg-rose-50 rounded-lg border border-rose-200">削除</button>
-                        </div>
-                        <div className="grid grid-cols-7 gap-1">
-                          {WEEKDAYS.map((w, dow) => {
-                            const isWork = (m.workDays || []).includes(dow);
-                            return (
-                              <button key={w} onClick={() => updateMembers(p => p.map(x => x.id !== m.id ? x : { ...x, workDays: (x.workDays || []).includes(dow) ? x.workDays.filter(d => d !== dow) : [...(x.workDays || []), dow] }))} className={`py-1 rounded text-[10px] font-bold border ${isWork ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200'}`}>{w}</button>
-                            );
-                          })}
-                        </div>
+                      <div key={m.id} className="p-2.5 border border-slate-200 rounded-xl flex items-center gap-2 bg-slate-50">
+                        <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}.</span>
+                        <input type="text" value={m.name} onChange={e => updateMembers(p => p.map(x => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                        <button onClick={() => updateMembers(p => p.filter(x => x.id !== m.id))} className="text-xs text-rose-600 font-bold px-2.5 py-1.5 bg-rose-50 rounded-lg border border-rose-200">削除</button>
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => updateMembers(p => [...p, { id: 'm' + Date.now(), name: `メンバー${p.length + 1}`, active: true, workDays: [1,2,3,4,5] }])} className="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300">＋ メンバー追加</button>
+                  <button onClick={() => updateMembers(p => [...p, { id: 'm' + Date.now(), name: `メンバー${p.length + 1}`, active: true, workDays: [1,2,3,4,5], outpatientActive: true, outpatientDays: [1,2,3,4,5] }])} className="w-full py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300">＋ メンバー追加</button>
                 </div>
               )}
 
@@ -658,7 +884,7 @@
             </main>
           )}
 
-          {/* 日付タップモーダル（確認セクションと新規登録セクションを明確に分離） */}
+          {/* 日付タップモーダル */}
           {selectedDateKey && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedDateKey(null)}>
               <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -678,7 +904,7 @@
                   </div>
 
                   {Object.keys(leaves[selectedDateKey] || {}).length === 0 ? (
-                    <div className="text-xs text-slate-400 bg-white/80 rounded-xl py-3 text-center border border-dashed border-slate-300">登録されている休暇・NGはありません</div>
+                    <div className="text-xs text-slate-400 bg-white/80 rounded-xl py-2.5 text-center border border-dashed border-slate-300">登録されている休暇・NGはありません</div>
                   ) : (
                     <div className="space-y-1.5">
                       {Object.entries(leaves[selectedDateKey] || {}).map(([mid, lType]) => {
@@ -686,39 +912,72 @@
                         const tObj = LEAVE_TYPES.find(t => t.id === lType);
                         if (!mem || !tObj) return null;
                         return (
-                          <div key={mid} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                          <div key={mid} className="flex items-center justify-between bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-2">
                               <span className="font-extrabold text-xs text-slate-800">{mem.name}</span>
                               <span className={`text-[11px] px-2 py-0.5 rounded-md border font-bold ${tObj.badge}`}>{tObj.label}</span>
                             </div>
-                            <button onClick={() => removeLeaveEntry(selectedDateKey, mid)} className="text-[11px] text-rose-600 font-bold px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-lg">削除</button>
+                            <button onClick={() => removeLeaveEntry(selectedDateKey, mid)} className="text-[11px] text-rose-600 font-bold px-2.5 py-0.5 bg-rose-50 border border-rose-200 rounded-lg">削除</button>
                           </div>
                         );
                       })}
                     </div>
                   )}
 
-                  <div className="pt-2.5 border-t border-slate-200/80 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-extrabold text-indigo-800">🏥 オンコール担当</span>
-                      {oncalls[selectedDateKey]?.locked && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">固定中</span>}
+                  {/* オンコール＆外来 手動変更 */}
+                  <div className="pt-2.5 border-t border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-extrabold text-indigo-800">🏥 オンコール</span>
+                        {oncalls[selectedDateKey]?.locked && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">固定中</span>}
+                      </div>
+                      <select
+                        value={oncalls[selectedDateKey]?.memberId || ''}
+                        onChange={e => {
+                          const val = e.target.value;
+                          updateOncalls(prev => {
+                            const next = { ...prev };
+                            if (!val) delete next[selectedDateKey];
+                            else next[selectedDateKey] = { memberId: val, locked: true };
+                            return next;
+                          });
+                        }}
+                        className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white font-bold text-slate-800 shadow-sm"
+                      >
+                        <option value="">未割当</option>
+                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
                     </div>
-                    <select
-                      value={oncalls[selectedDateKey]?.memberId || ''}
-                      onChange={e => {
-                        const val = e.target.value;
-                        updateOncalls(prev => {
-                          const next = { ...prev };
-                          if (!val) delete next[selectedDateKey];
-                          else next[selectedDateKey] = { memberId: val, locked: true };
-                          return next;
-                        });
-                      }}
-                      className="text-xs border border-indigo-200 rounded-lg px-2.5 py-1.5 bg-white font-bold text-slate-800 shadow-sm"
-                    >
-                      <option value="">未割当</option>
-                      {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {[['am', '🩺 午前外来'], ['pm', '🩺 午後外来']].map(([slotKey, label]) => (
+                        <div key={slotKey} className="bg-white p-2 rounded-xl border border-emerald-200 flex flex-col gap-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-extrabold text-emerald-800">{label}</span>
+                            {outpatients[selectedDateKey]?.[slotKey]?.locked && <span className="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-700 rounded">固定</span>}
+                          </div>
+                          <select
+                            value={outpatients[selectedDateKey]?.[slotKey]?.memberId || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              updateOutpatients(prev => {
+                                const next = { ...prev };
+                                const dayObj = { ...(next[selectedDateKey] || {}) };
+                                if (!val) delete dayObj[slotKey];
+                                else dayObj[slotKey] = { memberId: val, locked: true };
+                                if (Object.keys(dayObj).length === 0) delete next[selectedDateKey];
+                                else next[selectedDateKey] = dayObj;
+                                return next;
+                              });
+                            }}
+                            className="text-xs border border-slate-200 rounded-lg px-1.5 py-1 bg-slate-50 font-bold text-slate-800"
+                          >
+                            <option value="">未割当</option>
+                            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -730,7 +989,7 @@
                 </div>
 
                 {/* 新規登録画面 */}
-                <div className="bg-rose-50/50 rounded-2xl p-3.5 border-2 border-rose-200/80 space-y-3.5">
+                <div className="bg-rose-50/50 rounded-2xl p-3.5 border-2 border-rose-200/80 space-y-3">
                   <span className="inline-block text-xs font-extrabold text-rose-800 bg-white px-2.5 py-1 rounded-full border border-rose-200 shadow-sm">✏️ 休暇・オンコール不可の新規登録</span>
 
                   <div className="space-y-1.5">
@@ -757,12 +1016,18 @@
             </div>
           )}
 
+          {/* 下部4タブナビゲーション */}
           <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30">
-            <div className="max-w-md mx-auto grid grid-cols-3 h-14">
-              {[['leave', '📅', '有給休暇', 'text-rose-600'], ['oncall', '🏥', 'オンコール', 'text-indigo-600'], ['settings', '⚙', '設定', 'text-slate-900']].map(([id, icon, label, activeColor]) => (
+            <div className="max-w-md mx-auto grid grid-cols-4 h-14">
+              {[
+                ['leave', '📅', '有給休暇', 'text-rose-600'],
+                ['oncall', '🏥', 'オンコール', 'text-indigo-600'],
+                ['outpatient', '🩺', '外来', 'text-emerald-600'],
+                ['settings', '⚙', '設定', 'text-slate-900']
+              ].map(([id, icon, label, activeColor]) => (
                 <button key={id} onClick={() => setActiveTab(id)} className={`flex flex-col items-center justify-center gap-0.5 transition ${activeTab === id ? `${activeColor} font-extrabold` : 'text-slate-400 font-bold'}`}>
                   <span className="text-base leading-none">{icon}</span>
-                  <span className="text-[11px]">{label}</span>
+                  <span className="text-[10px]">{label}</span>
                 </button>
               ))}
             </div>
