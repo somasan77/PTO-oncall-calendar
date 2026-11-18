@@ -224,6 +224,9 @@
       const [formMemberId, setFormMemberId] = useState('m1');
       const [formLeaveType, setFormLeaveType] = useState('full');
 
+      // オンコール交替候補リスト表示ステート
+      const [swapCandidates, setSwapCandidates] = useState(null);
+
       const touchStartX = useRef(null);
       const touchStartY = useRef(null);
       const didSwipeRef = useRef(false);
@@ -483,37 +486,153 @@
         return cells;
       }, [year, month]);
 
-      // オンコール・外来の不整合チェック判定関数
-      const hasOncallConflict = (dateKey, memberId) => {
-        if (!memberId) return false;
+      // オンコール不整合の具体的な理由リストを取得する関数
+      const getOncallConflictReasons = (dateKey, memberId) => {
+        if (!memberId || !dateKey) return [];
+        const reasons = [];
+        const [yStr, mStr, dStr] = dateKey.split('-');
+        const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
         const lType = leaves[dateKey]?.[memberId];
+
         if (lType) {
-          if (lType === 'full' || lType === 'jcho' || lType === 'ng') return true;
-          if (rules.excludePmLeave && lType.startsWith('pm')) return true;
-          if (rules.excludeAmLeave && lType.startsWith('am')) return true;
+          const tObj = LEAVE_TYPES.find(t => t.id === lType);
+          const tLabel = tObj ? tObj.label : lType;
+          if (lType === 'full' || lType === 'jcho' || lType === 'ng') {
+            reasons.push(`${dateLabel}当日に「${tLabel}」が登録されています`);
+          } else if (rules.excludePmLeave && lType.startsWith('pm')) {
+            reasons.push(`${dateLabel}当日に「${tLabel}」が登録されています（午後休除外ルール）`);
+          } else if (rules.excludeAmLeave && lType.startsWith('am')) {
+            reasons.push(`${dateLabel}当日に「${tLabel}」が登録されています（午前休除外ルール）`);
+          }
         }
+
         if (rules.avoidBeforeFullLeave) {
-          const [yStr, mStr, dStr] = dateKey.split('-');
           const nextObj = new Date(Number(yStr), Number(mStr) - 1, Number(dStr) + 1);
           const nextKey = `${nextObj.getFullYear()}-${String(nextObj.getMonth() + 1).padStart(2, '0')}-${String(nextObj.getDate()).padStart(2, '0')}`;
-          if (leaves[nextKey]?.[memberId] === 'full') return true;
+          if (leaves[nextKey]?.[memberId] === 'full') {
+            reasons.push(`翌日(${nextObj.getMonth() + 1}/${nextObj.getDate()})に「全日有休」が登録されています（全休前日回避ルール）`);
+          }
         }
-        return false;
+        return reasons;
       };
 
-      const hasOutpatientConflict = (dateKey, slot, memberId) => {
-        if (!memberId) return false;
+      const hasOncallConflict = (dateKey, memberId) => getOncallConflictReasons(dateKey, memberId).length > 0;
+
+      // 外来不整合の具体的な理由リストを取得する関数
+      const getOutpatientConflictReasons = (dateKey, slot, memberId) => {
+        if (!memberId || !dateKey) return [];
         const lType = leaves[dateKey]?.[memberId];
-        if (!lType) return false;
-        if (lType === 'full' || lType === 'jcho') return true;
-        if (slot === 'am' && lType.startsWith('am')) return true;
-        if (slot === 'pm' && lType.startsWith('pm')) return true;
-        return false;
+        if (!lType) return [];
+        const [, mStr, dStr] = dateKey.split('-');
+        const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
+        const tObj = LEAVE_TYPES.find(t => t.id === lType);
+        const tLabel = tObj ? tObj.label : lType;
+        const slotLabel = slot === 'am' ? '午前外来' : '午後外来';
+
+        if (lType === 'full' || lType === 'jcho') {
+          return [`${dateLabel}当日に「${tLabel}」が登録されているため${slotLabel}と干渉しています`];
+        }
+        if (slot === 'am' && lType.startsWith('am')) {
+          return [`${dateLabel}当日に「${tLabel}」が登録されているため午前外来と干渉しています`];
+        }
+        if (slot === 'pm' && lType.startsWith('pm')) {
+          return [`${dateLabel}当日に「${tLabel}」が登録されているため午後外来と干渉しています`];
+        }
+        return [];
+      };
+
+      const hasOutpatientConflict = (dateKey, slot, memberId) => getOutpatientConflictReasons(dateKey, slot, memberId).length > 0;
+
+      // ⚠️タップ時に干渉理由をポップアップ表示
+      const showConflictDetailAlert = (e, title, reasons) => {
+        if (e) e.stopPropagation();
+        if (!reasons || reasons.length === 0) return;
+        window.alert(`⚠️ 【ルール逸脱・干渉の内容】\n${title}\n\n・${reasons.join('\n・')}`);
+      };
+
+      // 指定メンバーが指定日にオンコール可能か（休暇・勤務曜日と干渉しないか）判定
+      const canMemberTakeOncallOnDate = (memberId, cell) => {
+        const mem = members.find(m => m.id === memberId);
+        if (!mem || !mem.active) return false;
+        if (!(mem.workDays || []).includes(cell.dow)) return false;
+        if (hasOncallConflict(cell.key, memberId)) return false;
+        return true;
+      };
+
+      // 🔄 交替ボタンタップ時：確認ダイアログを出して近場の交替候補日を検索
+      const handleRequestOncallSwap = (dateKey) => {
+        const curOc = oncalls[dateKey];
+        if (!curOc || !curOc.memberId) return;
+        const curMem = members.find(m => m.id === curOc.memberId);
+        const [, mStr, dStr] = dateKey.split('-');
+        const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
+
+        if (!window.confirm(`${dateLabel}（${curMem ? curMem.name : ''}さん）と休暇に影響なく交代できる候補日を表示しますか？`)) {
+          return;
+        }
+
+        const sourceDayNum = Number(dStr);
+        const sourceCell = calendarCells.find(c => c && c.key === dateKey);
+        if (!sourceCell) return;
+
+        const candidates = [];
+        calendarCells.filter(Boolean).forEach(cell => {
+          if (cell.key === dateKey) return;
+          const targetOc = oncalls[cell.key];
+          if (!targetOc || !targetOc.memberId) return;
+          if (targetOc.memberId === curOc.memberId) return;
+
+          const targetMem = members.find(m => m.id === targetOc.memberId);
+          if (!targetMem) return;
+
+          // 双方が相手の日に勤務可能で、休暇ルール（全休・半休・翌日全休など）に一切干渉しないかチェック
+          const canSourceGoTarget = canMemberTakeOncallOnDate(curOc.memberId, cell);
+          const canTargetGoSource = canMemberTakeOncallOnDate(targetOc.memberId, sourceCell);
+
+          if (canSourceGoTarget && canTargetGoSource) {
+            const diffDays = Math.abs(cell.day - sourceDayNum);
+            candidates.push({
+              dateKey: cell.key,
+              day: cell.day,
+              dow: cell.dow,
+              memberId: targetMem.id,
+              memberName: targetMem.name,
+              diffDays,
+              locked: !!targetOc.locked
+            });
+          }
+        });
+
+        // 日付が近い順（差が小さい順）にソート
+        candidates.sort((a, b) => a.diffDays - b.diffDays);
+        setSwapCandidates(candidates);
+      };
+
+      // 候補リストから選んだ日付とオンコール担当を入れ替えて登録
+      const executeOncallSwap = (targetCandidate) => {
+        if (!selectedDateKey || !targetCandidate) return;
+        const sourceOc = oncalls[selectedDateKey];
+        const targetOc = oncalls[targetCandidate.dateKey];
+        if (!sourceOc || !targetOc) return;
+
+        const sourceMem = members.find(m => m.id === sourceOc.memberId);
+        const [, mStr1, dStr1] = selectedDateKey.split('-');
+        const [, mStr2, dStr2] = targetCandidate.dateKey.split('-');
+
+        updateOncalls(prev => ({
+          ...prev,
+          [selectedDateKey]: { memberId: targetOc.memberId, locked: true },
+          [targetCandidate.dateKey]: { memberId: sourceOc.memberId, locked: true }
+        }));
+
+        setSwapCandidates(null);
+        showToast(`${Number(mStr1)}/${Number(dStr1)}(${sourceMem?.name || ''}) ⇄ ${Number(mStr2)}/${Number(dStr2)}(${targetCandidate.memberName}) を交替しました`);
       };
 
       const handleDateTap = (cell) => {
         if (didSwipeRef.current) { didSwipeRef.current = false; return; }
         if (!cell) return;
+        setSwapCandidates(null);
         setSelectedDateKey(cell.key);
         if (members.length > 0 && !formMemberId) setFormMemberId(members[0].id);
       };
@@ -619,6 +738,7 @@
           }
         }
 
+        setSwapCandidates(null);
         updateOncalls(prev => {
           const next = { ...prev };
           if (!newMemberId) delete next[dateKey];
@@ -993,12 +1113,15 @@
                   const dayLeaves = leaves[cell.key] || {};
                   const oncallInfo = oncalls[cell.key];
                   const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
-                  const ocConflict = oncallMember ? hasOncallConflict(cell.key, oncallMember.id) : false;
+                  const ocReasons = oncallMember ? getOncallConflictReasons(cell.key, oncallMember.id) : [];
+                  const ocConflict = ocReasons.length > 0;
                   const opInfo = outpatients[cell.key] || {};
                   const opAmMember = members.find(m => m.id === opInfo.am?.memberId);
                   const opPmMember = members.find(m => m.id === opInfo.pm?.memberId);
-                  const opAmConflict = opAmMember ? hasOutpatientConflict(cell.key, 'am', opAmMember.id) : false;
-                  const opPmConflict = opPmMember ? hasOutpatientConflict(cell.key, 'pm', opPmMember.id) : false;
+                  const opAmReasons = opAmMember ? getOutpatientConflictReasons(cell.key, 'am', opAmMember.id) : [];
+                  const opPmReasons = opPmMember ? getOutpatientConflictReasons(cell.key, 'pm', opPmMember.id) : [];
+                  const opAmConflict = opAmReasons.length > 0;
+                  const opPmConflict = opPmReasons.length > 0;
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
 
                   return (
@@ -1031,13 +1154,14 @@
                       {activeTab === 'oncall' && (
                         <div className="flex-1 flex flex-col justify-center items-center px-0.5">
                           {oncallMember ? (
-                            <div className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${
-                              ocConflict
-                                ? 'bg-rose-50 text-rose-900 border-rose-500 ring-1 ring-rose-400'
-                                : oncallInfo.locked
-                                ? 'bg-indigo-600 text-white border-indigo-700'
-                                : 'bg-indigo-50 text-indigo-950 border-indigo-300'
-                            }`}>
+                            <div
+                              onClick={ocConflict ? (e) => showConflictDetailAlert(e, `${cell.key} オンコール（${oncallMember.name}さん）`, ocReasons) : undefined}
+                              className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${
+                                ocConflict
+                                  ? 'bg-rose-50 text-rose-900 border-rose-500 ring-1 ring-rose-400'
+                                  : 'bg-indigo-50 text-indigo-950 border-indigo-200'
+                              }`}
+                            >
                               <div className="print-oncall-text text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
                                 {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
                               </div>
@@ -1053,13 +1177,16 @@
                           {MON_FRI.includes(cell.dow) && !cell.holiday && (
                             <>
                               {(outpatientSlots.am || []).includes(cell.dow) && (
-                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
-                                  opAmConflict
-                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opAmMember
-                                    ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-950 border-emerald-300')
-                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
-                                }`}>
+                                <div
+                                  onClick={opAmConflict ? (e) => showConflictDetailAlert(e, `${cell.key} 午前外来（${opAmMember.name}さん）`, opAmReasons) : undefined}
+                                  className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                    opAmConflict
+                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                      : opAmMember
+                                      ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
+                                      : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                  }`}
+                                >
                                   <span className="print-op-label text-[7.5px] font-bold opacity-80">前</span>
                                   <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
                                     {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
@@ -1067,13 +1194,16 @@
                                 </div>
                               )}
                               {(outpatientSlots.pm || []).includes(cell.dow) && (
-                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
-                                  opPmConflict
-                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opPmMember
-                                    ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-950 border-teal-300')
-                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
-                                }`}>
+                                <div
+                                  onClick={opPmConflict ? (e) => showConflictDetailAlert(e, `${cell.key} 午後外来（${opPmMember.name}さん）`, opPmReasons) : undefined}
+                                  className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                    opPmConflict
+                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                      : opPmMember
+                                      ? 'bg-teal-50 text-teal-950 border-teal-200'
+                                      : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                  }`}
+                                >
                                   <span className="print-op-label text-[7.5px] font-bold opacity-80">後</span>
                                   <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
                                     {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
@@ -1407,14 +1537,14 @@
 
           {/* 日付タップモーダル */}
           {selectedDateKey && (
-            <div className="no-print fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedDateKey(null)}>
+            <div className="no-print fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => { setSelectedDateKey(null); setSwapCandidates(null); }}>
               <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-4 max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                   <div className="flex items-center gap-2">
                     <span className="text-base font-extrabold text-slate-800">{selectedDateKey}</span>
                     {HOLIDAYS_JP[selectedDateKey] && <span className="text-[11px] font-bold px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full">{HOLIDAYS_JP[selectedDateKey]}</span>}
                   </div>
-                  <button onClick={() => setSelectedDateKey(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold text-xs">✕</button>
+                  <button onClick={() => { setSelectedDateKey(null); setSwapCandidates(null); }} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold text-xs">✕</button>
                 </div>
 
                 {/* 確認画面 */}
@@ -1445,36 +1575,112 @@
                     </div>
                   )}
 
-                  {/* オンコール＆外来 手動変更（休暇重複アラート付き） */}
+                  {/* オンコール＆外来 手動変更・交替提案 */}
                   <div className="pt-2.5 border-t border-slate-200/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-extrabold text-indigo-800">🏥 オンコール</span>
                         {oncalls[selectedDateKey]?.locked && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">固定中</span>}
-                        {hasOncallConflict(selectedDateKey, oncalls[selectedDateKey]?.memberId) && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300">⚠️休暇重複</span>
+                        {(() => {
+                          const ocMid = oncalls[selectedDateKey]?.memberId;
+                          const reasons = getOncallConflictReasons(selectedDateKey, ocMid);
+                          if (reasons.length === 0) return null;
+                          const mem = members.find(m => m.id === ocMid);
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => showConflictDetailAlert(e, `${selectedDateKey} オンコール（${mem?.name || ''}さん）`, reasons)}
+                              className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300 underline decoration-dotted active:scale-95"
+                            >
+                              ⚠️干渉内容を見る
+                            </button>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <select
+                          value={oncalls[selectedDateKey]?.memberId || ''}
+                          onChange={e => handleManualOncallChange(selectedDateKey, e.target.value)}
+                          className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white font-bold text-slate-800 shadow-sm"
+                        >
+                          <option value="">未割当</option>
+                          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                        {oncalls[selectedDateKey]?.memberId && (
+                          <button
+                            type="button"
+                            onClick={() => handleRequestOncallSwap(selectedDateKey)}
+                            className="px-2 py-1 text-[11px] font-extrabold bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 flex items-center gap-0.5"
+                            title="近場で休暇に影響なく交替できる候補日を検索"
+                          >
+                            🔄 交替
+                          </button>
                         )}
                       </div>
-                      <select
-                        value={oncalls[selectedDateKey]?.memberId || ''}
-                        onChange={e => handleManualOncallChange(selectedDateKey, e.target.value)}
-                        className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white font-bold text-slate-800 shadow-sm"
-                      >
-                        <option value="">未割当</option>
-                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </select>
                     </div>
+
+                    {/* 交替候補日の提案リスト表示エリア */}
+                    {swapCandidates !== null && (
+                      <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-extrabold text-indigo-900">
+                            🔄 休暇に影響なく交替できる近場の候補日
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSwapCandidates(null)}
+                            className="text-[10px] font-bold text-slate-500 px-1.5 py-0.5 bg-white rounded border border-slate-200"
+                          >
+                            閉じる
+                          </button>
+                        </div>
+                        {swapCandidates.length === 0 ? (
+                          <div className="text-[11px] text-slate-500 bg-white rounded-lg p-2 text-center">
+                            今月内で双方の休暇・勤務曜日に干渉せず交替できる候補日は見つかりませんでした
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">
+                            {swapCandidates.slice(0, 8).map(cand => (
+                              <div key={cand.dateKey} className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-indigo-100 shadow-sm">
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="font-extrabold text-slate-800">
+                                    {month + 1}/{cand.day}({WEEKDAYS[cand.dow]})
+                                  </span>
+                                  <span className="font-bold text-indigo-700">{cand.memberName}</span>
+                                  <span className="text-[10px] text-slate-400">({cand.diffDays}日差)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => executeOncallSwap(cand)}
+                                  className="px-2.5 py-1 bg-indigo-600 text-white text-[10.5px] font-extrabold rounded-md shadow-sm active:scale-95"
+                                >
+                                  ここで交替
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {[['am', '🩺 午前外来'], ['pm', '🩺 午後外来']].map(([slotKey, label]) => {
                         const curMid = outpatients[selectedDateKey]?.[slotKey]?.memberId;
-                        const isConf = hasOutpatientConflict(selectedDateKey, slotKey, curMid);
+                        const reasons = getOutpatientConflictReasons(selectedDateKey, slotKey, curMid);
+                        const isConf = reasons.length > 0;
+                        const mem = members.find(m => m.id === curMid);
                         return (
                           <div key={slotKey} className={`bg-white p-2 rounded-xl border flex flex-col gap-1 ${isConf ? 'border-rose-400 bg-rose-50/40' : 'border-emerald-200'}`}>
                             <div className="flex items-center justify-between">
                               <span className="text-[11px] font-extrabold text-emerald-800">{label}</span>
                               {isConf ? (
-                                <span className="text-[9px] font-bold px-1 bg-rose-100 text-rose-700 rounded">⚠️重複</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => showConflictDetailAlert(e, `${selectedDateKey} ${label}（${mem?.name || ''}さん）`, reasons)}
+                                  className="text-[9px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300 underline decoration-dotted"
+                                >
+                                  ⚠️詳細
+                                </button>
                               ) : (
                                 outpatients[selectedDateKey]?.[slotKey]?.locked && <span className="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-700 rounded">固定</span>
                               )}
