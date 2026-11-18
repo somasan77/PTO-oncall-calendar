@@ -27,21 +27,30 @@
 
     /* PDF・印刷時の視認性大幅アップ専用スタイル */
     @media print {
-      @page { size: A4 portrait; margin: 8mm; }
+      @page { size: A4 portrait; margin: 7mm; }
       body { background: #ffffff !important; color: #000000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .no-print { display: none !important; }
-      .print-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
-      .print-grid-header { font-size: 14px !important; padding: 6px 0 !important; border-color: #334155 !important; }
-      .print-cal-cell { min-height: 118px !important; padding: 4px !important; border: 1px solid #94a3b8 !important; }
-      .print-day-num { font-size: 15px !important; font-weight: 900 !important; }
-      .print-holiday { font-size: 11px !important; max-width: none !important; font-weight: 700 !important; }
+      .print-container { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; min-height: auto !important; }
+      .print-grid-header { font-size: 13px !important; padding: 5px 0 !important; border-color: #334155 !important; }
+      .print-cal-cell { min-height: 118px !important; padding: 4px !important; border: 1px solid #94a3b8 !important; break-inside: avoid !important; }
+      .print-rows-6 .print-cal-cell { min-height: 104px !important; }
+      .print-day-num { font-size: 14px !important; font-weight: 900 !important; }
+      .print-holiday { font-size: 10px !important; max-width: none !important; font-weight: 700 !important; }
       .print-leave-row { height: 20px !important; margin-bottom: 2px !important; border-color: #64748b !important; }
-      .print-leave-text { font-size: 12.5px !important; font-weight: 800 !important; padding: 0 4px !important; }
+      .print-leave-text { font-size: 12px !important; font-weight: 800 !important; padding: 0 4px !important; }
+      .print-leave-row-compact { height: 15px !important; margin-bottom: 1.5px !important; border-color: #64748b !important; }
+      .print-leave-text-compact { font-size: 10px !important; font-weight: 800 !important; padding: 0 3px !important; }
       .print-oncall-box { padding: 6px 4px !important; border-width: 1.5px !important; }
       .print-oncall-text { font-size: 15px !important; font-weight: 900 !important; }
+      .print-oncall-compact { padding: 2px 4px !important; border-width: 1.5px !important; }
+      .print-oncall-compact-label { font-size: 9px !important; font-weight: 900 !important; }
+      .print-oncall-compact-name { font-size: 11.5px !important; font-weight: 900 !important; }
       .print-op-box { padding: 4px 6px !important; border-width: 1.5px !important; }
       .print-op-label { font-size: 11px !important; font-weight: 800 !important; }
       .print-op-name { font-size: 13.5px !important; font-weight: 900 !important; }
+      .print-op-compact { padding: 1.5px 3px !important; border-width: 1px !important; }
+      .print-op-compact-label { font-size: 8.5px !important; font-weight: 800 !important; }
+      .print-op-compact-name { font-size: 10px !important; font-weight: 900 !important; }
     }
   </style>
 </head>
@@ -129,6 +138,14 @@
       { id: 'ng', label: 'オンコール不可(定時)', short: '定時', band: 'none', bg: '', badge: 'bg-slate-100 text-slate-700 border-slate-300' },
     ];
 
+    const BAND_MAP = {
+      full: 'inset-0',
+      'left-half': 'inset-y-0 left-0 w-1/2',
+      'right-half': 'inset-y-0 right-0 w-1/2',
+      'left-short': 'inset-y-0 left-0 w-[35%]',
+      'right-short': 'inset-y-0 right-0 w-[35%]'
+    };
+
     const HOLIDAYS_JP = {
       '2026-01-01': '元日', '2026-01-12': '成人の日', '2026-02-11': '建国記念の日', '2026-02-23': '天皇誕生日',
       '2026-03-20': '春分の日', '2026-04-29': '昭和の日', '2026-05-03': '憲法記念日', '2026-05-04': 'みどりの日',
@@ -187,6 +204,13 @@
       const [slideAnim, setSlideAnim] = useState({ dir: '', seq: 0 });
       const [toastMsg, setToastMsg] = useState(null);
 
+      // カスタムダイアログ（ブラウザ標準alert/confirmの代わり）
+      const [dialog, setDialog] = useState(null);
+
+      // PDF出力設定モーダル・出力項目ステート
+      const [pdfModalOpen, setPdfModalOpen] = useState(false);
+      const [printOptions, setPrintOptions] = useState({ leave: true, oncall: false, outpatient: false });
+
       const [members, setMembers] = useState(() => {
         const s = localStorage.getItem('oncall_members_v3'); return s ? normalizeMembers(JSON.parse(s)) : DEFAULT_MEMBERS;
       });
@@ -241,6 +265,14 @@
       useEffect(() => { localStorage.setItem('oncall_backups_v1', JSON.stringify(backups)); }, [backups]);
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 2400); };
+
+      const openAlertDialog = ({ title, subtitle, items, message }) => {
+        setDialog({ type: 'alert', title, subtitle, items, message });
+      };
+
+      const openConfirmDialog = ({ title, message, confirmLabel = 'このまま実行', confirmColor = 'bg-rose-600', onConfirm }) => {
+        setDialog({ type: 'confirm', title, message, confirmLabel, confirmColor, onConfirm });
+      };
 
       const createBackupSnapshot = async (dateKey, payloadData, isSilent = false) => {
         const snap = {
@@ -368,36 +400,43 @@
       const restoreFromBackup = (dateKey) => {
         const bk = backups[dateKey];
         if (!bk || !bk.data) { showToast('バックアップデータが見つかりません'); return; }
-        if (!window.confirm(`${dateKey}（${bk.savedAt} 保存）のバックアップ状態に復元しますか？\n※現在のデータは上書きされます。`)) return;
 
-        const d = bk.data;
-        const nextMembers = normalizeMembers(d.members || DEFAULT_MEMBERS);
-        const nextLeaves = d.leaves || {};
-        const nextOncalls = d.oncalls || {};
-        const nextOutpatients = d.outpatients || {};
-        const nextSlots = d.outpatientSlots || DEFAULT_OUTPATIENT_SLOTS;
-        const nextTargetDays = d.targetDays || [1, 2, 3, 4, 5];
-        const nextRules = normalizeRules(d.rules || DEFAULT_RULES);
+        openConfirmDialog({
+          title: '⏱ バックアップの復元',
+          message: `${dateKey}（${bk.savedAt} 保存）のバックアップ状態に復元しますか？\n※現在のデータは上書きされます。`,
+          confirmLabel: '復元する',
+          confirmColor: 'bg-amber-500',
+          onConfirm: () => {
+            const d = bk.data;
+            const nextMembers = normalizeMembers(d.members || DEFAULT_MEMBERS);
+            const nextLeaves = d.leaves || {};
+            const nextOncalls = d.oncalls || {};
+            const nextOutpatients = d.outpatients || {};
+            const nextSlots = d.outpatientSlots || DEFAULT_OUTPATIENT_SLOTS;
+            const nextTargetDays = d.targetDays || [1, 2, 3, 4, 5];
+            const nextRules = normalizeRules(d.rules || DEFAULT_RULES);
 
-        setMembers(nextMembers);
-        setLeaves(nextLeaves);
-        setOncalls(nextOncalls);
-        setOutpatients(nextOutpatients);
-        setOutpatientSlots(nextSlots);
-        setTargetDays(nextTargetDays);
-        setRules(nextRules);
+            setMembers(nextMembers);
+            setLeaves(nextLeaves);
+            setOncalls(nextOncalls);
+            setOutpatients(nextOutpatients);
+            setOutpatientSlots(nextSlots);
+            setTargetDays(nextTargetDays);
+            setRules(nextRules);
 
-        pushToCloud({
-          members: nextMembers,
-          leaves: nextLeaves,
-          oncalls: nextOncalls,
-          outpatients: nextOutpatients,
-          outpatientSlots: nextSlots,
-          targetDays: nextTargetDays,
-          rules: nextRules
+            pushToCloud({
+              members: nextMembers,
+              leaves: nextLeaves,
+              oncalls: nextOncalls,
+              outpatients: nextOutpatients,
+              outpatientSlots: nextSlots,
+              targetDays: nextTargetDays,
+              rules: nextRules
+            });
+
+            showToast(`${dateKey} の状態に復元しました`);
+          }
         });
-
-        showToast(`${dateKey} の状態に復元しました`);
       };
 
       const downloadBackupFile = () => {
@@ -486,7 +525,9 @@
         return cells;
       }, [year, month]);
 
-      // オンコール不整合の具体的な理由リストを取得する関数
+      const calendarRowCount = Math.ceil(calendarCells.length / 7);
+
+      // オンコール不整合の具体的な理由リストを取得
       const getOncallConflictReasons = (dateKey, memberId) => {
         if (!memberId || !dateKey) return [];
         const reasons = [];
@@ -518,7 +559,7 @@
 
       const hasOncallConflict = (dateKey, memberId) => getOncallConflictReasons(dateKey, memberId).length > 0;
 
-      // 外来不整合の具体的な理由リストを取得する関数
+      // 外来不整合の具体的な理由リストを取得
       const getOutpatientConflictReasons = (dateKey, slot, memberId) => {
         if (!memberId || !dateKey) return [];
         const lType = leaves[dateKey]?.[memberId];
@@ -541,16 +582,18 @@
         return [];
       };
 
-      const hasOutpatientConflict = (dateKey, slot, memberId) => getOutpatientConflictReasons(dateKey, slot, memberId).length > 0;
-
-      // ⚠️タップ時に干渉理由をポップアップ表示
-      const showConflictDetailAlert = (e, title, reasons) => {
+      // 日付モーダル内の「⚠️干渉内容を見る」「⚠️詳細」タップ時にカスタムダイアログで表示
+      const showConflictDetailDialog = (e, subtitle, reasons) => {
         if (e) e.stopPropagation();
         if (!reasons || reasons.length === 0) return;
-        window.alert(`⚠️ 【ルール逸脱・干渉の内容】\n${title}\n\n・${reasons.join('\n・')}`);
+        openAlertDialog({
+          title: '⚠️ ルール逸脱・干渉の内容',
+          subtitle,
+          items: reasons
+        });
       };
 
-      // 指定メンバーが指定日にオンコール可能か（休暇・勤務曜日と干渉しないか）判定
+      // 指定メンバーが指定日にオンコール可能か判定
       const canMemberTakeOncallOnDate = (memberId, cell) => {
         const mem = members.find(m => m.id === memberId);
         if (!mem || !mem.active) return false;
@@ -559,17 +602,15 @@
         return true;
       };
 
-      // 🔄 交替ボタンタップ時：確認ダイアログを出して近場の交替候補日を検索
+      // 🔄 交替ボタンタップ時：確認ダイアログなしで即座に交替候補日を表示（再タップで閉じる）
       const handleRequestOncallSwap = (dateKey) => {
-        const curOc = oncalls[dateKey];
-        if (!curOc || !curOc.memberId) return;
-        const curMem = members.find(m => m.id === curOc.memberId);
-        const [, mStr, dStr] = dateKey.split('-');
-        const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
-
-        if (!window.confirm(`${dateLabel}（${curMem ? curMem.name : ''}さん）と休暇に影響なく交代できる候補日を表示しますか？`)) {
+        if (swapCandidates !== null) {
+          setSwapCandidates(null);
           return;
         }
+        const curOc = oncalls[dateKey];
+        if (!curOc || !curOc.memberId) return;
+        const [, , dStr] = dateKey.split('-');
 
         const sourceDayNum = Number(dStr);
         const sourceCell = calendarCells.find(c => c && c.key === dateKey);
@@ -585,7 +626,6 @@
           const targetMem = members.find(m => m.id === targetOc.memberId);
           if (!targetMem) return;
 
-          // 双方が相手の日に勤務可能で、休暇ルール（全休・半休・翌日全休など）に一切干渉しないかチェック
           const canSourceGoTarget = canMemberTakeOncallOnDate(curOc.memberId, cell);
           const canTargetGoSource = canMemberTakeOncallOnDate(targetOc.memberId, sourceCell);
 
@@ -603,7 +643,6 @@
           }
         });
 
-        // 日付が近い順（差が小さい順）にソート
         candidates.sort((a, b) => a.diffDays - b.diffDays);
         setSwapCandidates(candidates);
       };
@@ -637,7 +676,19 @@
         if (members.length > 0 && !formMemberId) setFormMemberId(members[0].id);
       };
 
-      // 休暇・予定登録時の不整合アラート確認付き保存処理
+      const commitSaveLeave = () => {
+        if (!selectedDateKey || !formMemberId) return;
+        updateLeaves(prev => {
+          const dayData = { ...(prev[selectedDateKey] || {}) };
+          if (formLeaveType === 'clear') delete dayData[formMemberId];
+          else dayData[formMemberId] = formLeaveType;
+          return { ...prev, [selectedDateKey]: dayData };
+        });
+        showToast('登録しました');
+        setSelectedDateKey(null);
+      };
+
+      // 休暇・予定登録時の不整合確認付き保存処理
       const saveLeaveAndClose = () => {
         if (!selectedDateKey || !formMemberId) return;
 
@@ -646,7 +697,6 @@
           const [, mStr, dStr] = selectedDateKey.split('-');
           const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
 
-          // 1. 当日のオンコール担当との不整合チェック
           const oc = oncalls[selectedDateKey];
           if (oc && oc.memberId === formMemberId) {
             const isConflict =
@@ -660,7 +710,6 @@
             }
           }
 
-          // 2. 前日のオンコール担当チェック（全日有休の前日回避ルールがONの場合）
           if (formLeaveType === 'full' && rules.avoidBeforeFullLeave) {
             const curObj = new Date(Number(selectedDateKey.slice(0, 4)), Number(mStr) - 1, Number(dStr));
             const prevObj = new Date(curObj.getFullYear(), curObj.getMonth(), curObj.getDate() - 1);
@@ -670,7 +719,6 @@
             }
           }
 
-          // 3. 当日の外来担当との不整合チェック
           const op = outpatients[selectedDateKey];
           if (op) {
             const amConflict = op.am?.memberId === formMemberId && (formLeaveType === 'full' || formLeaveType === 'jcho' || formLeaveType.startsWith('am'));
@@ -681,19 +729,28 @@
           }
 
           if (conflicts.length > 0) {
-            const msg = `${conflicts.join('、')}がこのまま登録しますか？`;
-            if (!window.confirm(msg)) return;
+            openConfirmDialog({
+              title: '⚠️ 担当との重複確認',
+              message: `${conflicts.join('、')}がこのまま登録しますか？`,
+              confirmLabel: 'このまま登録',
+              confirmColor: 'bg-rose-600',
+              onConfirm: commitSaveLeave
+            });
+            return;
           }
         }
 
-        updateLeaves(prev => {
-          const dayData = { ...(prev[selectedDateKey] || {}) };
-          if (formLeaveType === 'clear') delete dayData[formMemberId];
-          else dayData[formMemberId] = formLeaveType;
-          return { ...prev, [selectedDateKey]: dayData };
+        commitSaveLeave();
+      };
+
+      const commitManualOncallChange = (dateKey, newMemberId) => {
+        setSwapCandidates(null);
+        updateOncalls(prev => {
+          const next = { ...prev };
+          if (!newMemberId) delete next[dateKey];
+          else next[dateKey] = { memberId: newMemberId, locked: true };
+          return next;
         });
-        showToast('登録しました');
-        setSelectedDateKey(null);
       };
 
       // モーダルからオンコール担当を手動変更した際の休暇重複チェック＆保存
@@ -701,7 +758,7 @@
         if (newMemberId) {
           const mem = members.find(m => m.id === newMemberId);
           const memName = mem ? mem.name : '';
-          const [, mStr, dStr] = dateKey.split('-');
+          const [yStr, mStr, dStr] = dateKey.split('-');
           const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
           const warnings = [];
 
@@ -723,7 +780,6 @@
           }
 
           if (rules.avoidBeforeFullLeave) {
-            const [yStr] = dateKey.split('-');
             const nextObj = new Date(Number(yStr), Number(mStr) - 1, Number(dStr) + 1);
             const nextKey = `${nextObj.getFullYear()}-${String(nextObj.getMonth() + 1).padStart(2, '0')}-${String(nextObj.getDate()).padStart(2, '0')}`;
             if (leaves[nextKey]?.[newMemberId] === 'full') {
@@ -732,17 +788,28 @@
           }
 
           if (warnings.length > 0) {
-            if (!window.confirm(`⚠️ ${memName}さんは${warnings.join('、')}が、このままオンコール担当に設定しますか？`)) {
-              return;
-            }
+            openConfirmDialog({
+              title: '⚠️ オンコール担当の確認',
+              message: `${memName}は${warnings.join('、')}が、このままオンコール担当に設定しますか？`,
+              confirmLabel: 'このまま設定',
+              confirmColor: 'bg-indigo-600',
+              onConfirm: () => commitManualOncallChange(dateKey, newMemberId)
+            });
+            return;
           }
         }
 
-        setSwapCandidates(null);
-        updateOncalls(prev => {
+        commitManualOncallChange(dateKey, newMemberId);
+      };
+
+      const commitManualOutpatientChange = (dateKey, slotKey, newMemberId) => {
+        updateOutpatients(prev => {
           const next = { ...prev };
-          if (!newMemberId) delete next[dateKey];
-          else next[dateKey] = { memberId: newMemberId, locked: true };
+          const dayObj = { ...(next[dateKey] || {}) };
+          if (!newMemberId) delete dayObj[slotKey];
+          else dayObj[slotKey] = { memberId: newMemberId, locked: true };
+          if (Object.keys(dayObj).length === 0) delete next[dateKey];
+          else next[dateKey] = dayObj;
           return next;
         });
       };
@@ -767,22 +834,19 @@
               (slotKey === 'pm' && lType.startsWith('pm'));
 
             if (isConflict) {
-              if (!window.confirm(`⚠️ ${memName}さんは${dateLabel}に「${tLabel}」が登録されていますが、このまま${slotLabel}担当に設定しますか？`)) {
-                return;
-              }
+              openConfirmDialog({
+                title: '⚠️ 外来担当の確認',
+                message: `${memName}は${dateLabel}に「${tLabel}」が登録されていますが、このまま${slotLabel}担当に設定しますか？`,
+                confirmLabel: 'このまま設定',
+                confirmColor: 'bg-emerald-600',
+                onConfirm: () => commitManualOutpatientChange(dateKey, slotKey, newMemberId)
+              });
+              return;
             }
           }
         }
 
-        updateOutpatients(prev => {
-          const next = { ...prev };
-          const dayObj = { ...(next[dateKey] || {}) };
-          if (!newMemberId) delete dayObj[slotKey];
-          else dayObj[slotKey] = { memberId: newMemberId, locked: true };
-          if (Object.keys(dayObj).length === 0) delete next[dateKey];
-          else next[dateKey] = dayObj;
-          return next;
-        });
+        commitManualOutpatientChange(dateKey, slotKey, newMemberId);
       };
 
       const removeLeaveEntry = (dateKey, memberId) => {
@@ -979,12 +1043,42 @@
         showToast(`${month + 1}月の外来担当を自動割付しました`);
       };
 
-      const handleExportPDF = () => {
-        const tabLabel = activeTab === 'leave' ? '有給休暇カレンダー' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表';
+      // PDF設定モーダルを開く（現在のタブを初期選択）
+      const openPdfExportModal = () => {
+        setPrintOptions({
+          leave: activeTab === 'leave',
+          oncall: activeTab === 'oncall',
+          outpatient: activeTab === 'outpatient'
+        });
+        setPdfModalOpen(true);
+      };
+
+      const selectedPrintCount = [printOptions.leave, printOptions.oncall, printOptions.outpatient].filter(Boolean).length;
+      const isCombinedPrint = selectedPrintCount > 1;
+
+      const printTitleLabel = useMemo(() => {
+        const parts = [];
+        if (printOptions.leave) parts.push('有給休暇');
+        if (printOptions.oncall) parts.push('オンコール');
+        if (printOptions.outpatient) parts.push('外来');
+        if (parts.length === 0) return '予定表';
+        if (parts.length === 1) {
+          if (printOptions.leave) return '有給休暇予定表';
+          if (printOptions.oncall) return 'オンコール担当表';
+          return '外来担当表';
+        }
+        return `${parts.join('・')} 予定表`;
+      }, [printOptions]);
+
+      const executeExportPDF = () => {
+        if (selectedPrintCount === 0) return;
         const prevTitle = document.title;
-        document.title = `${year}年${month + 1}月_${tabLabel}`;
-        window.print();
-        setTimeout(() => { document.title = prevTitle; }, 1000);
+        document.title = `${year}年${month + 1}月_${printTitleLabel.replace(/\s+/g, '')}`;
+        setPdfModalOpen(false);
+        setTimeout(() => {
+          window.print();
+          setTimeout(() => { document.title = prevTitle; }, 1000);
+        }, 120);
       };
 
       const saveCustomFirebaseConfig = () => {
@@ -1002,7 +1096,7 @@
         setTimeout(() => window.location.reload(), 600);
       };
 
-      // 月間集計（有給集計を廃止し、JCHO回数を集計）
+      // 月間集計（OC・外来・JCHO）
       const monthlyStats = useMemo(() => {
         const stats = {};
         members.forEach(m => { stats[m.id] = { oncall: 0, fri: 0, jcho: 0, opDays: 0, opSlots: 0 }; });
@@ -1030,7 +1124,7 @@
 
       return (
         <div
-          className="print-container max-w-md mx-auto min-h-screen flex flex-col bg-slate-50 pb-20 select-none overflow-x-hidden"
+          className={`print-container max-w-md mx-auto min-h-screen flex flex-col bg-slate-50 pb-20 select-none overflow-x-hidden ${calendarRowCount >= 6 ? 'print-rows-6' : ''}`}
           onTouchStart={activeTab !== 'settings' ? handleTouchStart : undefined}
           onTouchEnd={activeTab !== 'settings' ? handleTouchEnd : undefined}
         >
@@ -1041,11 +1135,20 @@
           )}
 
           {/* PDF出力時のみ最上部に表示される大見出しヘッダー */}
-          <div className="hidden print:flex items-end justify-between border-b-2 border-slate-900 pb-2.5 mb-3">
-            <div className="text-2xl font-black text-slate-900 tracking-tight">
-              {year}年 {month + 1}月 {activeTab === 'leave' ? '有給休暇予定表' : activeTab === 'oncall' ? 'オンコール担当表' : '外来担当表'}
+          <div className="hidden print:flex items-end justify-between border-b-2 border-slate-900 pb-2 mb-2.5">
+            <div>
+              <div className="text-2xl font-black text-slate-900 tracking-tight">
+                {year}年 {month + 1}月 {printTitleLabel}
+              </div>
+              {isCombinedPrint && (
+                <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-slate-700">
+                  {printOptions.oncall && <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-400 text-indigo-950">OC: オンコール</span>}
+                  {printOptions.outpatient && <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-400 text-emerald-950">前/後: 午前・午後外来</span>}
+                  {printOptions.leave && <span className="px-1.5 py-0.5 rounded bg-rose-100 border border-rose-400 text-rose-950">帯表示: 休暇・JCHO・定時</span>}
+                </div>
+              )}
             </div>
-            <div className="text-xs font-bold text-slate-600">
+            <div className="text-xs font-bold text-slate-600 shrink-0">
               出力日: {new Date().toLocaleDateString('ja-JP')}
             </div>
           </div>
@@ -1083,7 +1186,7 @@
                       <button onClick={runOutpatientAutoAssign} className="px-2 py-1.5 text-[11px] font-bold bg-emerald-600 text-white rounded-lg shadow-sm active:scale-95 transition">外来割振</button>
                     )}
                     <button
-                      onClick={handleExportPDF}
+                      onClick={openPdfExportModal}
                       className="px-2 py-1.5 text-[11px] font-bold bg-slate-800 text-white rounded-lg shadow-sm active:scale-95 transition"
                       title="PDF出力・印刷"
                     >
@@ -1113,16 +1216,15 @@
                   const dayLeaves = leaves[cell.key] || {};
                   const oncallInfo = oncalls[cell.key];
                   const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
-                  const ocReasons = oncallMember ? getOncallConflictReasons(cell.key, oncallMember.id) : [];
-                  const ocConflict = ocReasons.length > 0;
+                  const ocConflict = oncallMember ? getOncallConflictReasons(cell.key, oncallMember.id).length > 0 : false;
                   const opInfo = outpatients[cell.key] || {};
                   const opAmMember = members.find(m => m.id === opInfo.am?.memberId);
                   const opPmMember = members.find(m => m.id === opInfo.pm?.memberId);
-                  const opAmReasons = opAmMember ? getOutpatientConflictReasons(cell.key, 'am', opAmMember.id) : [];
-                  const opPmReasons = opPmMember ? getOutpatientConflictReasons(cell.key, 'pm', opPmMember.id) : [];
-                  const opAmConflict = opAmReasons.length > 0;
-                  const opPmConflict = opPmReasons.length > 0;
+                  const opAmConflict = opAmMember ? getOutpatientConflictReasons(cell.key, 'am', opAmMember.id).length > 0 : false;
+                  const opPmConflict = opPmMember ? getOutpatientConflictReasons(cell.key, 'pm', opPmMember.id).length > 0 : false;
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
+                  const hasAmSlot = MON_FRI.includes(cell.dow) && !cell.holiday && (outpatientSlots.am || []).includes(cell.dow);
+                  const hasPmSlot = MON_FRI.includes(cell.dow) && !cell.holiday && (outpatientSlots.pm || []).includes(cell.dow);
 
                   return (
                     <div key={cell.key} onClick={() => handleDateTap(cell)} className="print-cal-cell bg-white min-h-[82px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden">
@@ -1131,95 +1233,215 @@
                         {cell.holiday && <span className="print-holiday text-[8px] text-rose-500 tracking-tighter leading-none truncate max-w-[34px]">{cell.holiday}</span>}
                       </div>
 
-                      {activeTab === 'leave' && (
-                        <div className="flex flex-col gap-[2px] flex-1">
-                          {Object.entries(dayLeaves).map(([mid, lType]) => {
-                            const mem = members.find(m => m.id === mid);
-                            const typeObj = LEAVE_TYPES.find(t => t.id === lType);
-                            if (!mem || !typeObj) return null;
-                            const bandMap = { full: 'inset-0', 'left-half': 'inset-y-0 left-0 w-1/2', 'right-half': 'inset-y-0 right-0 w-1/2', 'left-short': 'inset-y-0 left-0 w-[35%]', 'right-short': 'inset-y-0 right-0 w-[35%]' };
-                            const displayText = lType === 'ng' ? `${mem.name}定時` : lType === 'jcho' ? `${mem.name}JCHO` : mem.name;
-                            return (
-                              <div key={mid} className="print-leave-row relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-300/80">
-                                {typeObj.band !== 'none' && <div className={`absolute ${bandMap[typeObj.band] || ''} ${typeObj.bg} pointer-events-none`} />}
-                                <span className="print-leave-text relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
-                                  {displayText}
+                      {/* ===== 通常画面表示（print時は非表示） ===== */}
+                      <div className="no-print flex-1 flex flex-col">
+                        {activeTab === 'leave' && (
+                          <div className="flex flex-col gap-[2px] flex-1">
+                            {Object.entries(dayLeaves).map(([mid, lType]) => {
+                              const mem = members.find(m => m.id === mid);
+                              const typeObj = LEAVE_TYPES.find(t => t.id === lType);
+                              if (!mem || !typeObj) return null;
+                              const displayText = lType === 'ng' ? `${mem.name}定時` : lType === 'jcho' ? `${mem.name}JCHO` : mem.name;
+                              return (
+                                <div key={mid} className="relative w-full h-[13px] flex items-center overflow-hidden rounded-[2px] border border-slate-300/80">
+                                  {typeObj.band !== 'none' && <div className={`absolute ${BAND_MAP[typeObj.band] || ''} ${typeObj.bg} pointer-events-none`} />}
+                                  <span className="relative z-10 text-[8.5px] font-bold text-slate-900 leading-none tracking-tighter px-[1px] whitespace-nowrap">
+                                    {displayText}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {activeTab === 'oncall' && (
+                          <div className="flex-1 flex flex-col justify-center items-center px-0.5">
+                            {oncallMember ? (
+                              <div
+                                className={`w-full py-1 px-0.5 rounded text-center border ${
+                                  ocConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500 ring-1 ring-rose-400'
+                                    : 'bg-indigo-50 text-indigo-950 border-indigo-200'
+                                }`}
+                              >
+                                <div className="text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
+                                  {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
+                                </div>
+                              </div>
+                            ) : (
+                              targetDays.includes(cell.dow) && !cell.holiday && <span className="text-[8.5px] text-slate-300">未割当</span>
+                            )}
+                          </div>
+                        )}
+
+                        {activeTab === 'outpatient' && (
+                          <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
+                            {hasAmSlot && (
+                              <div
+                                className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                  opAmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opAmMember
+                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
+                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                }`}
+                              >
+                                <span className="text-[7.5px] font-bold opacity-80">前</span>
+                                <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                                  {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
                                 </span>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {activeTab === 'oncall' && (
-                        <div className="flex-1 flex flex-col justify-center items-center px-0.5">
-                          {oncallMember ? (
-                            <div
-                              onClick={ocConflict ? (e) => showConflictDetailAlert(e, `${cell.key} オンコール（${oncallMember.name}さん）`, ocReasons) : undefined}
-                              className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${
-                                ocConflict
-                                  ? 'bg-rose-50 text-rose-900 border-rose-500 ring-1 ring-rose-400'
-                                  : 'bg-indigo-50 text-indigo-950 border-indigo-200'
-                              }`}
-                            >
-                              <div className="print-oncall-text text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
-                                {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
+                            )}
+                            {hasPmSlot && (
+                              <div
+                                className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                  opPmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opPmMember
+                                    ? 'bg-teal-50 text-teal-950 border-teal-200'
+                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                }`}
+                              >
+                                <span className="text-[7.5px] font-bold opacity-80">後</span>
+                                <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                                  {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
+                                </span>
                               </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ===== PDF・印刷専用表示（選択項目を1枚に自動集約） ===== */}
+                      <div className="hidden print:flex print:flex-col print:flex-1 print:gap-1">
+                        {/* オンコール */}
+                        {printOptions.oncall && (
+                          isCombinedPrint ? (
+                            oncallMember ? (
+                              <div className={`print-oncall-compact w-full rounded flex items-center justify-between border ${
+                                ocConflict
+                                  ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                  : 'bg-indigo-50 text-indigo-950 border-indigo-400'
+                              }`}>
+                                <span className="print-oncall-compact-label opacity-80">OC</span>
+                                <span className="print-oncall-compact-name truncate">
+                                  {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
+                                </span>
+                              </div>
+                            ) : null
+                          ) : (
+                            <div className="flex-1 flex flex-col justify-center items-center px-0.5">
+                              {oncallMember && (
+                                <div className={`print-oncall-box w-full rounded text-center border ${
+                                  ocConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : 'bg-indigo-50 text-indigo-950 border-indigo-300'
+                                }`}>
+                                  <div className="print-oncall-text leading-tight whitespace-nowrap overflow-hidden">
+                                    {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        )}
+
+                        {/* 外来 */}
+                        {printOptions.outpatient && (hasAmSlot || hasPmSlot) && (
+                          isCombinedPrint ? (
+                            <div className={`grid gap-0.5 ${hasAmSlot && hasPmSlot ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                              {hasAmSlot && (
+                                <div className={`print-op-compact rounded flex items-center justify-between border ${
+                                  opAmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opAmMember
+                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-400'
+                                    : 'bg-slate-50 text-slate-400 border-slate-300'
+                                }`}>
+                                  <span className="print-op-compact-label opacity-80">前</span>
+                                  <span className="print-op-compact-name truncate">
+                                    {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '-'}
+                                  </span>
+                                </div>
+                              )}
+                              {hasPmSlot && (
+                                <div className={`print-op-compact rounded flex items-center justify-between border ${
+                                  opPmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opPmMember
+                                    ? 'bg-teal-50 text-teal-950 border-teal-400'
+                                    : 'bg-slate-50 text-slate-400 border-slate-300'
+                                }`}>
+                                  <span className="print-op-compact-label opacity-80">後</span>
+                                  <span className="print-op-compact-name truncate">
+                                    {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '-'}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           ) : (
-                            targetDays.includes(cell.dow) && !cell.holiday && <span className="no-print text-[8.5px] text-slate-300">未割当</span>
-                          )}
-                        </div>
-                      )}
-
-                      {activeTab === 'outpatient' && (
-                        <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
-                          {MON_FRI.includes(cell.dow) && !cell.holiday && (
-                            <>
-                              {(outpatientSlots.am || []).includes(cell.dow) && (
-                                <div
-                                  onClick={opAmConflict ? (e) => showConflictDetailAlert(e, `${cell.key} 午前外来（${opAmMember.name}さん）`, opAmReasons) : undefined}
-                                  className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
-                                    opAmConflict
-                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                      : opAmMember
-                                      ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
-                                      : 'bg-slate-50 text-slate-300 border-slate-200/60'
-                                  }`}
-                                >
-                                  <span className="print-op-label text-[7.5px] font-bold opacity-80">前</span>
-                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                            <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
+                              {hasAmSlot && (
+                                <div className={`print-op-box w-full rounded flex items-center justify-between border ${
+                                  opAmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opAmMember
+                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                                    : 'bg-slate-50 text-slate-300 border-slate-200'
+                                }`}>
+                                  <span className="print-op-label opacity-80">前</span>
+                                  <span className="print-op-name leading-none truncate">
                                     {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
                                   </span>
                                 </div>
                               )}
-                              {(outpatientSlots.pm || []).includes(cell.dow) && (
-                                <div
-                                  onClick={opPmConflict ? (e) => showConflictDetailAlert(e, `${cell.key} 午後外来（${opPmMember.name}さん）`, opPmReasons) : undefined}
-                                  className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
-                                    opPmConflict
-                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                      : opPmMember
-                                      ? 'bg-teal-50 text-teal-950 border-teal-200'
-                                      : 'bg-slate-50 text-slate-300 border-slate-200/60'
-                                  }`}
-                                >
-                                  <span className="print-op-label text-[7.5px] font-bold opacity-80">後</span>
-                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                              {hasPmSlot && (
+                                <div className={`print-op-box w-full rounded flex items-center justify-between border ${
+                                  opPmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opPmMember
+                                    ? 'bg-teal-50 text-teal-950 border-teal-300'
+                                    : 'bg-slate-50 text-slate-300 border-slate-200'
+                                }`}>
+                                  <span className="print-op-label opacity-80">後</span>
+                                  <span className="print-op-name leading-none truncate">
                                     {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
                                   </span>
                                 </div>
                               )}
-                            </>
-                          )}
-                        </div>
-                      )}
+                            </div>
+                          )
+                        )}
+
+                        {/* 有給休暇・予定 */}
+                        {printOptions.leave && (
+                          <div className="flex flex-col flex-1">
+                            {Object.entries(dayLeaves).map(([mid, lType]) => {
+                              const mem = members.find(m => m.id === mid);
+                              const typeObj = LEAVE_TYPES.find(t => t.id === lType);
+                              if (!mem || !typeObj) return null;
+                              const displayText = lType === 'ng' ? `${mem.name}定時` : lType === 'jcho' ? `${mem.name}JCHO` : mem.name;
+                              return (
+                                <div
+                                  key={mid}
+                                  className={`${isCombinedPrint ? 'print-leave-row-compact' : 'print-leave-row'} relative w-full flex items-center overflow-hidden rounded-[2px] border border-slate-400`}
+                                >
+                                  {typeObj.band !== 'none' && <div className={`absolute ${BAND_MAP[typeObj.band] || ''} ${typeObj.bg} pointer-events-none`} />}
+                                  <span className={`${isCombinedPrint ? 'print-leave-text-compact' : 'print-leave-text'} relative z-10 text-slate-900 leading-none tracking-tighter whitespace-nowrap`}>
+                                    {displayText}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
 
-              {/* 通常使用時のみカレンダー直下に常時表示される月間集計パネル（OC・外来・JCHOを集計） */}
+              {/* 通常使用時のみカレンダー直下に常時表示される月間集計パネル */}
               <div className="no-print mt-2.5 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-extrabold text-slate-700">
@@ -1455,7 +1677,6 @@
                     </button>
                   </div>
 
-                  {/* 日付リストから選択して復元 */}
                   <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <div className="font-bold text-slate-700">📅 保存済みバックアップ一覧（日付を指定して復元）</div>
                     {sortedBackupKeys.length === 0 ? (
@@ -1487,7 +1708,6 @@
                     )}
                   </div>
 
-                  {/* ファイルとしてのバックアップ書き出し・読み込み */}
                   <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <div className="font-bold text-slate-700">💾 バックアップファイルの保存・読み込み</div>
                     <p className="text-[10.5px] text-slate-500">端末内にJSONファイルとしてダウンロードしたり、ファイルを選択して復元できます。</p>
@@ -1589,7 +1809,7 @@
                           return (
                             <button
                               type="button"
-                              onClick={(e) => showConflictDetailAlert(e, `${selectedDateKey} オンコール（${mem?.name || ''}さん）`, reasons)}
+                              onClick={(e) => showConflictDetailDialog(e, `${selectedDateKey} オンコール（${mem?.name || ''}）`, reasons)}
                               className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300 underline decoration-dotted active:scale-95"
                             >
                               ⚠️干渉内容を見る
@@ -1611,7 +1831,7 @@
                             type="button"
                             onClick={() => handleRequestOncallSwap(selectedDateKey)}
                             className="px-2 py-1 text-[11px] font-extrabold bg-indigo-600 text-white rounded-lg shadow-sm active:scale-95 flex items-center gap-0.5"
-                            title="近場で休暇に影響なく交替できる候補日を検索"
+                            title="近場で休暇に影響なく交替できる候補日を表示"
                           >
                             🔄 交替
                           </button>
@@ -1676,7 +1896,7 @@
                               {isConf ? (
                                 <button
                                   type="button"
-                                  onClick={(e) => showConflictDetailAlert(e, `${selectedDateKey} ${label}（${mem?.name || ''}さん）`, reasons)}
+                                  onClick={(e) => showConflictDetailDialog(e, `${selectedDateKey} ${label}（${mem?.name || ''}）`, reasons)}
                                   className="text-[9px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300 underline decoration-dotted"
                                 >
                                   ⚠️詳細
@@ -1730,6 +1950,149 @@
                   </div>
 
                   <button onClick={saveLeaveAndClose} className="w-full py-3 bg-rose-600 text-white font-extrabold rounded-xl text-sm shadow-md active:scale-[0.99]">この内容で登録して閉じる</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PDF出力項目選択モーダル */}
+          {pdfModalOpen && (
+            <div className="no-print fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setPdfModalOpen(false)}>
+              <div className="bg-white w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                  <div className="text-sm font-extrabold text-slate-800">📄 PDF出力・印刷項目の選択</div>
+                  <button onClick={() => setPdfModalOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold text-xs">✕</button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-600">{year}年{month + 1}月の出力内容</span>
+                    <button
+                      type="button"
+                      onClick={() => setPrintOptions({ leave: true, oncall: true, outpatient: true })}
+                      className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200"
+                    >
+                      すべて選択
+                    </button>
+                  </div>
+
+                  {[
+                    ['leave', '📅 有給休暇・JCHO・定時', '休暇帯・JCHO・オンコール不可を表示', 'accent-rose-600 border-rose-200 bg-rose-50/60'],
+                    ['oncall', '🏥 オンコール担当', '各日のオンコール担当者を表示', 'accent-indigo-600 border-indigo-200 bg-indigo-50/60'],
+                    ['outpatient', '🩺 外来担当（午前・午後）', '午前・午後の外来担当者を表示', 'accent-emerald-600 border-emerald-200 bg-emerald-50/60']
+                  ].map(([key, title, desc, activeStyle]) => {
+                    const checked = !!printOptions[key];
+                    return (
+                      <label
+                        key={key}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border-2 cursor-pointer transition ${
+                          checked ? activeStyle : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={e => setPrintOptions(prev => ({ ...prev, [key]: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 shrink-0"
+                        />
+                        <div>
+                          <div className="text-xs font-extrabold text-slate-800">{title}</div>
+                          <div className="text-[10.5px] text-slate-500 mt-0.5">{desc}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[11px] text-slate-600">
+                  {selectedPrintCount === 0 ? (
+                    <span className="text-rose-600 font-bold">出力する項目を1つ以上選択してください。</span>
+                  ) : isCombinedPrint ? (
+                    <span>選択した <strong>{selectedPrintCount}項目</strong> を自動的に<strong>1枚のカレンダー</strong>へ集約して出力します。</span>
+                  ) : (
+                    <span><strong>{printTitleLabel}</strong> を見やすい拡大レイアウトで出力します。</span>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPdfModalOpen(false)}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedPrintCount === 0}
+                    onClick={executeExportPDF}
+                    className="flex-1 py-2.5 bg-slate-800 text-white font-extrabold rounded-xl text-xs shadow-sm disabled:opacity-40 active:scale-[0.99]"
+                  >
+                    📄 PDF出力・印刷
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* カスタム通知・確認ダイアログ（GitHubアドレスが出ないアプリ内ダイアログ） */}
+          {dialog && (
+            <div className="no-print fixed inset-0 bg-black/55 z-[60] flex items-center justify-center p-4" onClick={() => setDialog(null)}>
+              <div className="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3.5 shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="text-sm font-extrabold text-slate-800">{dialog.title}</div>
+                  <button onClick={() => setDialog(null)} className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold text-xs">✕</button>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-700 leading-relaxed">
+                  {dialog.subtitle && (
+                    <div className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1.5 rounded-lg">
+                      {dialog.subtitle}
+                    </div>
+                  )}
+                  {dialog.items && dialog.items.length > 0 && (
+                    <ul className="list-disc list-inside space-y-1 bg-rose-50/70 border border-rose-200 rounded-xl p-2.5 text-rose-900 font-bold">
+                      {dialog.items.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  )}
+                  {dialog.message && (
+                    <div className="whitespace-pre-line font-medium text-slate-700 px-0.5">
+                      {dialog.message}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  {dialog.type === 'confirm' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setDialog(null)}
+                        className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cb = dialog.onConfirm;
+                          setDialog(null);
+                          if (cb) cb();
+                        }}
+                        className={`flex-1 py-2.5 text-white font-extrabold rounded-xl text-xs shadow-sm active:scale-[0.99] ${dialog.confirmColor || 'bg-rose-600'}`}
+                      >
+                        {dialog.confirmLabel || 'OK'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDialog(null)}
+                      className="w-full py-2.5 bg-slate-800 text-white font-extrabold rounded-xl text-xs shadow-sm active:scale-[0.99]"
+                    >
+                      閉じる
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
