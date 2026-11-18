@@ -115,7 +115,6 @@
     const DEFAULT_RULE_ORDER = ['excludePmLeave', 'avoidBeforeFullLeave', 'avoidSameWeekMultiple', 'excludeAmLeave'];
     const DEFAULT_RULES = { excludePmLeave: true, avoidBeforeFullLeave: true, avoidSameWeekMultiple: true, excludeAmLeave: false, ruleOrder: DEFAULT_RULE_ORDER };
 
-    // JCHO種別を追加
     const LEAVE_TYPES = [
       { id: 'full', label: '全日有休', short: '全休', band: 'full', bg: 'bg-rose-300/85', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
       { id: 'am', label: '午前休', short: '午前休', band: 'left-half', bg: 'bg-amber-300/85', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -484,6 +483,34 @@
         return cells;
       }, [year, month]);
 
+      // オンコール・外来の不整合チェック判定関数
+      const hasOncallConflict = (dateKey, memberId) => {
+        if (!memberId) return false;
+        const lType = leaves[dateKey]?.[memberId];
+        if (lType) {
+          if (lType === 'full' || lType === 'jcho' || lType === 'ng') return true;
+          if (rules.excludePmLeave && lType.startsWith('pm')) return true;
+          if (rules.excludeAmLeave && lType.startsWith('am')) return true;
+        }
+        if (rules.avoidBeforeFullLeave) {
+          const [yStr, mStr, dStr] = dateKey.split('-');
+          const nextObj = new Date(Number(yStr), Number(mStr) - 1, Number(dStr) + 1);
+          const nextKey = `${nextObj.getFullYear()}-${String(nextObj.getMonth() + 1).padStart(2, '0')}-${String(nextObj.getDate()).padStart(2, '0')}`;
+          if (leaves[nextKey]?.[memberId] === 'full') return true;
+        }
+        return false;
+      };
+
+      const hasOutpatientConflict = (dateKey, slot, memberId) => {
+        if (!memberId) return false;
+        const lType = leaves[dateKey]?.[memberId];
+        if (!lType) return false;
+        if (lType === 'full' || lType === 'jcho') return true;
+        if (slot === 'am' && lType.startsWith('am')) return true;
+        if (slot === 'pm' && lType.startsWith('pm')) return true;
+        return false;
+      };
+
       const handleDateTap = (cell) => {
         if (didSwipeRef.current) { didSwipeRef.current = false; return; }
         if (!cell) return;
@@ -491,8 +518,55 @@
         if (members.length > 0 && !formMemberId) setFormMemberId(members[0].id);
       };
 
+      // 休暇・予定登録時の不整合アラート確認付き保存処理
       const saveLeaveAndClose = () => {
         if (!selectedDateKey || !formMemberId) return;
+
+        if (formLeaveType !== 'clear') {
+          const conflicts = [];
+          const [, mStr, dStr] = selectedDateKey.split('-');
+          const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
+
+          // 1. 当日のオンコール担当との不整合チェック
+          const oc = oncalls[selectedDateKey];
+          if (oc && oc.memberId === formMemberId) {
+            const isConflict =
+              formLeaveType === 'full' ||
+              formLeaveType === 'jcho' ||
+              formLeaveType === 'ng' ||
+              (rules.excludePmLeave && formLeaveType.startsWith('pm')) ||
+              (rules.excludeAmLeave && formLeaveType.startsWith('am'));
+            if (isConflict) {
+              conflicts.push(`${dateLabel}はオンコール担当になっています`);
+            }
+          }
+
+          // 2. 前日のオンコール担当チェック（全日有休の前日回避ルールがONの場合）
+          if (formLeaveType === 'full' && rules.avoidBeforeFullLeave) {
+            const curObj = new Date(Number(selectedDateKey.slice(0, 4)), Number(mStr) - 1, Number(dStr));
+            const prevObj = new Date(curObj.getFullYear(), curObj.getMonth(), curObj.getDate() - 1);
+            const prevKey = `${prevObj.getFullYear()}-${String(prevObj.getMonth() + 1).padStart(2, '0')}-${String(prevObj.getDate()).padStart(2, '0')}`;
+            if (oncalls[prevKey]?.memberId === formMemberId) {
+              conflicts.push(`前日(${prevObj.getMonth() + 1}/${prevObj.getDate()})がオンコール担当になっています（全日有休の前日）`);
+            }
+          }
+
+          // 3. 当日の外来担当との不整合チェック
+          const op = outpatients[selectedDateKey];
+          if (op) {
+            const amConflict = op.am?.memberId === formMemberId && (formLeaveType === 'full' || formLeaveType === 'jcho' || formLeaveType.startsWith('am'));
+            const pmConflict = op.pm?.memberId === formMemberId && (formLeaveType === 'full' || formLeaveType === 'jcho' || formLeaveType.startsWith('pm'));
+            if (amConflict && pmConflict) conflicts.push(`${dateLabel}は外来担当（午前・午後）になっています`);
+            else if (amConflict) conflicts.push(`${dateLabel}は午前外来担当になっています`);
+            else if (pmConflict) conflicts.push(`${dateLabel}は午後外来担当になっています`);
+          }
+
+          if (conflicts.length > 0) {
+            const msg = `${conflicts.join('、')}がこのまま登録しますか？`;
+            if (!window.confirm(msg)) return;
+          }
+        }
+
         updateLeaves(prev => {
           const dayData = { ...(prev[selectedDateKey] || {}) };
           if (formLeaveType === 'clear') delete dayData[formMemberId];
@@ -501,6 +575,94 @@
         });
         showToast('登録しました');
         setSelectedDateKey(null);
+      };
+
+      // モーダルからオンコール担当を手動変更した際の休暇重複チェック＆保存
+      const handleManualOncallChange = (dateKey, newMemberId) => {
+        if (newMemberId) {
+          const mem = members.find(m => m.id === newMemberId);
+          const memName = mem ? mem.name : '';
+          const [, mStr, dStr] = dateKey.split('-');
+          const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
+          const warnings = [];
+
+          const lType = leaves[dateKey]?.[newMemberId];
+          if (lType) {
+            const tObj = LEAVE_TYPES.find(t => t.id === lType);
+            const tLabel = tObj ? tObj.label : lType;
+            const isStrictConflict =
+              lType === 'full' ||
+              lType === 'jcho' ||
+              lType === 'ng' ||
+              (rules.excludePmLeave && lType.startsWith('pm')) ||
+              (rules.excludeAmLeave && lType.startsWith('am'));
+            if (isStrictConflict) {
+              warnings.push(`${dateLabel}に「${tLabel}」が登録されています`);
+            } else {
+              warnings.push(`${dateLabel}に「${tLabel}」が登録されています（ルール上は割付可）`);
+            }
+          }
+
+          if (rules.avoidBeforeFullLeave) {
+            const [yStr] = dateKey.split('-');
+            const nextObj = new Date(Number(yStr), Number(mStr) - 1, Number(dStr) + 1);
+            const nextKey = `${nextObj.getFullYear()}-${String(nextObj.getMonth() + 1).padStart(2, '0')}-${String(nextObj.getDate()).padStart(2, '0')}`;
+            if (leaves[nextKey]?.[newMemberId] === 'full') {
+              warnings.push(`翌日(${nextObj.getMonth() + 1}/${nextObj.getDate()})に「全日有休」が登録されています`);
+            }
+          }
+
+          if (warnings.length > 0) {
+            if (!window.confirm(`⚠️ ${memName}さんは${warnings.join('、')}が、このままオンコール担当に設定しますか？`)) {
+              return;
+            }
+          }
+        }
+
+        updateOncalls(prev => {
+          const next = { ...prev };
+          if (!newMemberId) delete next[dateKey];
+          else next[dateKey] = { memberId: newMemberId, locked: true };
+          return next;
+        });
+      };
+
+      // モーダルから外来担当を手動変更した際の休暇重複チェック＆保存
+      const handleManualOutpatientChange = (dateKey, slotKey, newMemberId) => {
+        if (newMemberId) {
+          const mem = members.find(m => m.id === newMemberId);
+          const memName = mem ? mem.name : '';
+          const [, mStr, dStr] = dateKey.split('-');
+          const dateLabel = `${Number(mStr)}/${Number(dStr)}`;
+          const slotLabel = slotKey === 'am' ? '午前外来' : '午後外来';
+
+          const lType = leaves[dateKey]?.[newMemberId];
+          if (lType) {
+            const tObj = LEAVE_TYPES.find(t => t.id === lType);
+            const tLabel = tObj ? tObj.label : lType;
+            const isConflict =
+              lType === 'full' ||
+              lType === 'jcho' ||
+              (slotKey === 'am' && lType.startsWith('am')) ||
+              (slotKey === 'pm' && lType.startsWith('pm'));
+
+            if (isConflict) {
+              if (!window.confirm(`⚠️ ${memName}さんは${dateLabel}に「${tLabel}」が登録されていますが、このまま${slotLabel}担当に設定しますか？`)) {
+                return;
+              }
+            }
+          }
+        }
+
+        updateOutpatients(prev => {
+          const next = { ...prev };
+          const dayObj = { ...(next[dateKey] || {}) };
+          if (!newMemberId) delete dayObj[slotKey];
+          else dayObj[slotKey] = { memberId: newMemberId, locked: true };
+          if (Object.keys(dayObj).length === 0) delete next[dateKey];
+          else next[dateKey] = dayObj;
+          return next;
+        });
       };
 
       const removeLeaveEntry = (dateKey, memberId) => {
@@ -831,9 +993,12 @@
                   const dayLeaves = leaves[cell.key] || {};
                   const oncallInfo = oncalls[cell.key];
                   const oncallMember = members.find(m => m.id === oncallInfo?.memberId);
+                  const ocConflict = oncallMember ? hasOncallConflict(cell.key, oncallMember.id) : false;
                   const opInfo = outpatients[cell.key] || {};
                   const opAmMember = members.find(m => m.id === opInfo.am?.memberId);
                   const opPmMember = members.find(m => m.id === opInfo.pm?.memberId);
+                  const opAmConflict = opAmMember ? hasOutpatientConflict(cell.key, 'am', opAmMember.id) : false;
+                  const opPmConflict = opPmMember ? hasOutpatientConflict(cell.key, 'pm', opPmMember.id) : false;
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
 
                   return (
@@ -866,8 +1031,16 @@
                       {activeTab === 'oncall' && (
                         <div className="flex-1 flex flex-col justify-center items-center px-0.5">
                           {oncallMember ? (
-                            <div className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${oncallInfo.locked ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-indigo-50 text-indigo-950 border-indigo-300'}`}>
-                              <div className="print-oncall-text text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">{oncallMember.name}</div>
+                            <div className={`print-oncall-box w-full py-1 px-0.5 rounded text-center border ${
+                              ocConflict
+                                ? 'bg-rose-50 text-rose-900 border-rose-500 ring-1 ring-rose-400'
+                                : oncallInfo.locked
+                                ? 'bg-indigo-600 text-white border-indigo-700'
+                                : 'bg-indigo-50 text-indigo-950 border-indigo-300'
+                            }`}>
+                              <div className="print-oncall-text text-[10px] font-bold leading-tight tracking-tighter whitespace-nowrap overflow-hidden">
+                                {ocConflict ? `⚠️${oncallMember.name}` : oncallMember.name}
+                              </div>
                             </div>
                           ) : (
                             targetDays.includes(cell.dow) && !cell.holiday && <span className="no-print text-[8.5px] text-slate-300">未割当</span>
@@ -880,15 +1053,31 @@
                           {MON_FRI.includes(cell.dow) && !cell.holiday && (
                             <>
                               {(outpatientSlots.am || []).includes(cell.dow) && (
-                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${opAmMember ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-950 border-emerald-300') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                  opAmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opAmMember
+                                    ? (opInfo.am?.locked ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-emerald-50 text-emerald-950 border-emerald-300')
+                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                }`}>
                                   <span className="print-op-label text-[7.5px] font-bold opacity-80">前</span>
-                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">{opAmMember ? opAmMember.name : '未'}</span>
+                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                                    {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
+                                  </span>
                                 </div>
                               )}
                               {(outpatientSlots.pm || []).includes(cell.dow) && (
-                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${opPmMember ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-950 border-teal-300') : 'bg-slate-50 text-slate-300 border-slate-200/60'}`}>
+                                <div className={`print-op-box w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                  opPmConflict
+                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                    : opPmMember
+                                    ? (opInfo.pm?.locked ? 'bg-teal-600 text-white border-teal-700' : 'bg-teal-50 text-teal-950 border-teal-300')
+                                    : 'bg-slate-50 text-slate-300 border-slate-200/60'
+                                }`}>
                                   <span className="print-op-label text-[7.5px] font-bold opacity-80">後</span>
-                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">{opPmMember ? opPmMember.name : '未'}</span>
+                                  <span className="print-op-name text-[9px] font-extrabold leading-none tracking-tighter truncate">
+                                    {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
+                                  </span>
                                 </div>
                               )}
                             </>
@@ -900,7 +1089,7 @@
                 })}
               </div>
 
-              {/* 通常使用時のみカレンダー直下に常時表示される月間集計パネル（有給を除外し、OC・外来・JCHOを集計） */}
+              {/* 通常使用時のみカレンダー直下に常時表示される月間集計パネル（OC・外来・JCHOを集計） */}
               <div className="no-print mt-2.5 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-extrabold text-slate-700">
@@ -1256,24 +1445,19 @@
                     </div>
                   )}
 
-                  {/* オンコール＆外来 手動変更 */}
+                  {/* オンコール＆外来 手動変更（休暇重複アラート付き） */}
                   <div className="pt-2.5 border-t border-slate-200/80 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-extrabold text-indigo-800">🏥 オンコール</span>
                         {oncalls[selectedDateKey]?.locked && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">固定中</span>}
+                        {hasOncallConflict(selectedDateKey, oncalls[selectedDateKey]?.memberId) && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded border border-rose-300">⚠️休暇重複</span>
+                        )}
                       </div>
                       <select
                         value={oncalls[selectedDateKey]?.memberId || ''}
-                        onChange={e => {
-                          const val = e.target.value;
-                          updateOncalls(prev => {
-                            const next = { ...prev };
-                            if (!val) delete next[selectedDateKey];
-                            else next[selectedDateKey] = { memberId: val, locked: true };
-                            return next;
-                          });
-                        }}
+                        onChange={e => handleManualOncallChange(selectedDateKey, e.target.value)}
                         className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white font-bold text-slate-800 shadow-sm"
                       >
                         <option value="">未割当</option>
@@ -1282,33 +1466,30 @@
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 pt-1">
-                      {[['am', '🩺 午前外来'], ['pm', '🩺 午後外来']].map(([slotKey, label]) => (
-                        <div key={slotKey} className="bg-white p-2 rounded-xl border border-emerald-200 flex flex-col gap-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-extrabold text-emerald-800">{label}</span>
-                            {outpatients[selectedDateKey]?.[slotKey]?.locked && <span className="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-700 rounded">固定</span>}
+                      {[['am', '🩺 午前外来'], ['pm', '🩺 午後外来']].map(([slotKey, label]) => {
+                        const curMid = outpatients[selectedDateKey]?.[slotKey]?.memberId;
+                        const isConf = hasOutpatientConflict(selectedDateKey, slotKey, curMid);
+                        return (
+                          <div key={slotKey} className={`bg-white p-2 rounded-xl border flex flex-col gap-1 ${isConf ? 'border-rose-400 bg-rose-50/40' : 'border-emerald-200'}`}>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-extrabold text-emerald-800">{label}</span>
+                              {isConf ? (
+                                <span className="text-[9px] font-bold px-1 bg-rose-100 text-rose-700 rounded">⚠️重複</span>
+                              ) : (
+                                outpatients[selectedDateKey]?.[slotKey]?.locked && <span className="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-700 rounded">固定</span>
+                              )}
+                            </div>
+                            <select
+                              value={curMid || ''}
+                              onChange={e => handleManualOutpatientChange(selectedDateKey, slotKey, e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-1.5 py-1 bg-slate-50 font-bold text-slate-800"
+                            >
+                              <option value="">未割当</option>
+                              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            </select>
                           </div>
-                          <select
-                            value={outpatients[selectedDateKey]?.[slotKey]?.memberId || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              updateOutpatients(prev => {
-                                const next = { ...prev };
-                                const dayObj = { ...(next[selectedDateKey] || {}) };
-                                if (!val) delete dayObj[slotKey];
-                                else dayObj[slotKey] = { memberId: val, locked: true };
-                                if (Object.keys(dayObj).length === 0) delete next[selectedDateKey];
-                                else next[selectedDateKey] = dayObj;
-                                return next;
-                              });
-                            }}
-                            className="text-xs border border-slate-200 rounded-lg px-1.5 py-1 bg-slate-50 font-bold text-slate-800"
-                          >
-                            <option value="">未割当</option>
-                            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                          </select>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
