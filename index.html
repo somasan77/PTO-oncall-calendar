@@ -45,12 +45,12 @@
       .print-oncall-compact { padding: 2px 4px !important; border-width: 1.5px !important; }
       .print-oncall-compact-label { font-size: 9px !important; font-weight: 900 !important; }
       .print-oncall-compact-name { font-size: 11.5px !important; font-weight: 900 !important; }
-      .print-op-box { padding: 4px 6px !important; border-width: 1.5px !important; }
-      .print-op-label { font-size: 11px !important; font-weight: 800 !important; }
+      .print-op-box { padding: 5px 6px !important; border-width: 1.5px !important; }
+      .print-op-label { font-size: 10.5px !important; font-weight: 800 !important; }
       .print-op-name { font-size: 13.5px !important; font-weight: 900 !important; }
-      .print-op-compact { padding: 1.5px 3px !important; border-width: 1px !important; }
+      .print-op-compact { padding: 1.5px 4px !important; border-width: 1.5px !important; }
       .print-op-compact-label { font-size: 8.5px !important; font-weight: 800 !important; }
-      .print-op-compact-name { font-size: 10px !important; font-weight: 900 !important; }
+      .print-op-compact-name { font-size: 10.5px !important; font-weight: 900 !important; }
     }
   </style>
 </head>
@@ -1143,7 +1143,7 @@
               {isCombinedPrint && (
                 <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-slate-700">
                   {printOptions.oncall && <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-400 text-indigo-950">OC: オンコール</span>}
-                  {printOptions.outpatient && <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-400 text-emerald-950">前/後: 午前・午後外来</span>}
+                  {printOptions.outpatient && <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-400 text-emerald-950">外来(AM/PM): 外来担当</span>}
                   {printOptions.leave && <span className="px-1.5 py-0.5 rounded bg-rose-100 border border-rose-400 text-rose-950">帯表示: 休暇・JCHO・定時</span>}
                 </div>
               )}
@@ -1225,6 +1225,8 @@
                   const isSunOrHol = cell.dow === 0 || !!cell.holiday;
                   const hasAmSlot = MON_FRI.includes(cell.dow) && !cell.holiday && (outpatientSlots.am || []).includes(cell.dow);
                   const hasPmSlot = MON_FRI.includes(cell.dow) && !cell.holiday && (outpatientSlots.pm || []).includes(cell.dow);
+                  const isSameOpMember = hasAmSlot && hasPmSlot && opAmMember && opPmMember && opAmMember.id === opPmMember.id;
+                  const sameOpConflict = opAmConflict || opPmConflict;
 
                   return (
                     <div key={cell.key} onClick={() => handleDateTap(cell)} className="print-cal-cell bg-white min-h-[82px] p-0.5 flex flex-col cursor-pointer active:bg-slate-100 relative overflow-hidden">
@@ -1278,7 +1280,7 @@
                           <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
                             {hasAmSlot && (
                               <div
-                                className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                className={`w-full py-0.5 px-0.5 rounded flex items-center justify-between gap-0.5 border ${
                                   opAmConflict
                                     ? 'bg-rose-50 text-rose-900 border-rose-500'
                                     : opAmMember
@@ -1286,7 +1288,7 @@
                                     : 'bg-slate-50 text-slate-300 border-slate-200/60'
                                 }`}
                               >
-                                <span className="text-[7.5px] font-bold opacity-80">前</span>
+                                <span className="text-[7px] font-extrabold opacity-80 shrink-0">AM</span>
                                 <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">
                                   {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
                                 </span>
@@ -1294,7 +1296,7 @@
                             )}
                             {hasPmSlot && (
                               <div
-                                className={`w-full py-0.5 px-1 rounded flex items-center justify-between border ${
+                                className={`w-full py-0.5 px-0.5 rounded flex items-center justify-between gap-0.5 border ${
                                   opPmConflict
                                     ? 'bg-rose-50 text-rose-900 border-rose-500'
                                     : opPmMember
@@ -1302,7 +1304,7 @@
                                     : 'bg-slate-50 text-slate-300 border-slate-200/60'
                                 }`}
                               >
-                                <span className="text-[7.5px] font-bold opacity-80">後</span>
+                                <span className="text-[7px] font-extrabold opacity-80 shrink-0">PM</span>
                                 <span className="text-[9px] font-extrabold leading-none tracking-tighter truncate">
                                   {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
                                 </span>
@@ -1346,68 +1348,96 @@
                           )
                         )}
 
-                        {/* 外来 */}
+                        {/* 外来（同一人物は「外来　〇〇」で統合表示、別人・片枠時は「外来AM／外来PM」で表示） */}
                         {printOptions.outpatient && (hasAmSlot || hasPmSlot) && (
                           isCombinedPrint ? (
-                            <div className={`grid gap-0.5 ${hasAmSlot && hasPmSlot ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                              {hasAmSlot && (
-                                <div className={`print-op-compact rounded flex items-center justify-between border ${
-                                  opAmConflict
-                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opAmMember
-                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-400'
-                                    : 'bg-slate-50 text-slate-400 border-slate-300'
-                                }`}>
-                                  <span className="print-op-compact-label opacity-80">前</span>
-                                  <span className="print-op-compact-name truncate">
-                                    {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '-'}
-                                  </span>
-                                </div>
-                              )}
-                              {hasPmSlot && (
-                                <div className={`print-op-compact rounded flex items-center justify-between border ${
-                                  opPmConflict
-                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opPmMember
-                                    ? 'bg-teal-50 text-teal-950 border-teal-400'
-                                    : 'bg-slate-50 text-slate-400 border-slate-300'
-                                }`}>
-                                  <span className="print-op-compact-label opacity-80">後</span>
-                                  <span className="print-op-compact-name truncate">
-                                    {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '-'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                            isSameOpMember ? (
+                              <div className={`print-op-compact w-full rounded flex items-center justify-between border ${
+                                sameOpConflict
+                                  ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                  : 'bg-emerald-50 text-emerald-950 border-emerald-400'
+                              }`}>
+                                <span className="print-op-compact-label opacity-85 shrink-0">外来</span>
+                                <span className="print-op-compact-name truncate">
+                                  {sameOpConflict ? `⚠️${opAmMember.name}` : opAmMember.name}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                {hasAmSlot && (
+                                  <div className={`print-op-compact w-full rounded flex items-center justify-between border ${
+                                    opAmConflict
+                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                      : opAmMember
+                                      ? 'bg-emerald-50 text-emerald-950 border-emerald-400'
+                                      : 'bg-slate-50 text-slate-400 border-slate-300'
+                                  }`}>
+                                    <span className="print-op-compact-label opacity-85 shrink-0">外来AM</span>
+                                    <span className="print-op-compact-name truncate">
+                                      {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '-'}
+                                    </span>
+                                  </div>
+                                )}
+                                {hasPmSlot && (
+                                  <div className={`print-op-compact w-full rounded flex items-center justify-between border ${
+                                    opPmConflict
+                                      ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                      : opPmMember
+                                      ? 'bg-teal-50 text-teal-950 border-teal-400'
+                                      : 'bg-slate-50 text-slate-400 border-slate-300'
+                                  }`}>
+                                    <span className="print-op-compact-label opacity-85 shrink-0">外来PM</span>
+                                    <span className="print-op-compact-name truncate">
+                                      {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '-'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )
                           ) : (
                             <div className="flex-1 flex flex-col justify-center gap-1 px-0.5">
-                              {hasAmSlot && (
-                                <div className={`print-op-box w-full rounded flex items-center justify-between border ${
-                                  opAmConflict
+                              {isSameOpMember ? (
+                                <div className={`print-op-box w-full rounded flex items-center justify-center gap-1.5 border ${
+                                  sameOpConflict
                                     ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opAmMember
-                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
-                                    : 'bg-slate-50 text-slate-300 border-slate-200'
+                                    : 'bg-emerald-50 text-emerald-950 border-emerald-300'
                                 }`}>
-                                  <span className="print-op-label opacity-80">前</span>
+                                  <span className="print-op-label opacity-85 shrink-0">外来</span>
                                   <span className="print-op-name leading-none truncate">
-                                    {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
+                                    {sameOpConflict ? `⚠️${opAmMember.name}` : opAmMember.name}
                                   </span>
                                 </div>
-                              )}
-                              {hasPmSlot && (
-                                <div className={`print-op-box w-full rounded flex items-center justify-between border ${
-                                  opPmConflict
-                                    ? 'bg-rose-50 text-rose-900 border-rose-500'
-                                    : opPmMember
-                                    ? 'bg-teal-50 text-teal-950 border-teal-300'
-                                    : 'bg-slate-50 text-slate-300 border-slate-200'
-                                }`}>
-                                  <span className="print-op-label opacity-80">後</span>
-                                  <span className="print-op-name leading-none truncate">
-                                    {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
-                                  </span>
-                                </div>
+                              ) : (
+                                <>
+                                  {hasAmSlot && (
+                                    <div className={`print-op-box w-full rounded flex items-center justify-between border ${
+                                      opAmConflict
+                                        ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                        : opAmMember
+                                        ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                                        : 'bg-slate-50 text-slate-300 border-slate-200'
+                                    }`}>
+                                      <span className="print-op-label opacity-85 shrink-0">外来AM</span>
+                                      <span className="print-op-name leading-none truncate">
+                                        {opAmMember ? (opAmConflict ? `⚠️${opAmMember.name}` : opAmMember.name) : '未'}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {hasPmSlot && (
+                                    <div className={`print-op-box w-full rounded flex items-center justify-between border ${
+                                      opPmConflict
+                                        ? 'bg-rose-50 text-rose-900 border-rose-500'
+                                        : opPmMember
+                                        ? 'bg-teal-50 text-teal-950 border-teal-300'
+                                        : 'bg-slate-50 text-slate-300 border-slate-200'
+                                    }`}>
+                                      <span className="print-op-label opacity-85 shrink-0">外来PM</span>
+                                      <span className="print-op-name leading-none truncate">
+                                        {opPmMember ? (opPmConflict ? `⚠️${opPmMember.name}` : opPmMember.name) : '未'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           )
@@ -2103,7 +2133,7 @@
             <div className="max-w-md mx-auto grid grid-cols-4 h-14">
               {[
                 ['leave', '📅', '有給休暇', 'text-rose-600'],
-                ['oncall', '📞', 'オンコール', 'text-indigo-600'],
+                ['oncall', '🏥', 'オンコール', 'text-indigo-600'],
                 ['outpatient', '🩺', '外来', 'text-emerald-600'],
                 ['settings', '⚙', '設定', 'text-slate-900']
               ].map(([id, icon, label, activeColor]) => (
