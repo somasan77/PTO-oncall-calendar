@@ -420,9 +420,9 @@
       };
 
       const updateMembers = (fn) => setMembers(p => { const n = normalizeMembers(typeof fn === 'function' ? fn(p) : fn); pushToCloud({ members: n }); return n; });
-      const updateLeaves = (fn) => setLeaves(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ leaves: n }); return n; });
-      const updateOncalls = (fn) => setOncalls(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ oncalls: n }); return n; });
-      const updateOutpatients = (fn) => setOutpatients(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ outpatients: n }); return n; });
+      const updateLeaves = (fn) => setLeaves(p => { const n = typeof fn === 'function' ? fn(p) : fn; localStorage.setItem('oncall_leaves_v3', JSON.stringify(n)); pushToCloud({ leaves: n }); return n; });
+      const updateOncalls = (fn) => setOncalls(p => { const n = typeof fn === 'function' ? fn(p) : fn; localStorage.setItem('oncall_assign_v3', JSON.stringify(n)); pushToCloud({ oncalls: n }); return n; });
+      const updateOutpatients = (fn) => setOutpatients(p => { const n = typeof fn === 'function' ? fn(p) : fn; localStorage.setItem('oncall_outpatients_v3', JSON.stringify(n)); pushToCloud({ outpatients: n }); return n; });
       const updateOutpatientSlots = (fn) => setOutpatientSlots(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ outpatientSlots: n }); return n; });
       const updateTargetDays = (fn) => setTargetDays(p => { const n = typeof fn === 'function' ? fn(p) : fn; pushToCloud({ targetDays: n }); return n; });
       const updateRules = (fn) => setRules(p => { const n = normalizeRules(typeof fn === 'function' ? fn(p) : fn); pushToCloud({ rules: n }); return n; });
