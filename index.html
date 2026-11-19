@@ -375,9 +375,9 @@
                     const normMems = data.members ? normalizeMembers(data.members) : members;
                     const normRules = data.rules ? normalizeRules(data.rules) : rules;
                     if (data.members) setMembers(normMems);
-                    if (data.leaves) setLeaves(data.leaves);
-                    if (data.oncalls) setOncalls(data.oncalls);
-                    if (data.outpatients) setOutpatients(data.outpatients);
+                    if (data.leaves !== undefined) setLeaves(data.leaves || {});
+                    if (data.oncalls !== undefined) setOncalls(data.oncalls || {});
+                    if (data.outpatients !== undefined) setOutpatients(data.outpatients || {});
                     if (data.outpatientSlots) setOutpatientSlots(data.outpatientSlots);
                     if (data.targetDays) setTargetDays(data.targetDays);
                     if (data.rules) setRules(normRules);
