@@ -213,7 +213,7 @@
       const [dialog, setDialog] = useState(null);
 
       // PINコードロックモーダル（OC割振 / 外来割振 / 有給削除）
-      const [pinModal, setPinModal] = useState(null); // { actionLabel, onUnlock }
+      const [pinModal, setPinModal] = useState(null);
       const [pinInput, setPinInput] = useState('');
       const [pinError, setPinError] = useState('');
 
@@ -777,8 +777,18 @@
         setSwapCandidates(null);
         updateOncalls(prev => {
           const next = { ...prev };
-          if (!newMemberId) delete next[dateKey];
-          else next[dateKey] = { memberId: newMemberId, locked: true };
+          if (!newMemberId) {
+            delete next[dateKey];
+            if (docRefHolder.current) {
+              docRefHolder.current.update({
+                [`oncalls.${dateKey}`]: firebase.firestore.FieldValue.delete(),
+                updatedAt: Date.now()
+              }).catch(() => {});
+            }
+          } else {
+            next[dateKey] = { memberId: newMemberId, locked: true };
+          }
+          localStorage.setItem('oncall_assign_v3', JSON.stringify(next));
           return next;
         });
       };
@@ -1888,6 +1898,7 @@
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <select
+                          key={`${selectedDateKey}-${oncalls[selectedDateKey]?.memberId || 'empty'}`}
                           value={oncalls[selectedDateKey]?.memberId || ''}
                           onChange={e => handleManualOncallChange(selectedDateKey, e.target.value)}
                           className="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white font-bold text-slate-800 shadow-sm"
@@ -2051,7 +2062,6 @@
                       setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
                       if (pinError) setPinError('');
                     }}
-                    placeholder=""
                     className="w-full text-center text-xl font-black tracking-[0.45em] py-2 px-3 border-2 border-slate-300 focus:border-indigo-600 rounded-xl bg-slate-50 outline-none"
                   />
                   {pinError && (
